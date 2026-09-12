@@ -47,3 +47,8 @@ jobs:
         
       - name: Run DXY CRT test
         run: python test_dxy_crt.py
+        
+      - name: Run FVG test
+        env:
+          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+        run: python test_fvg.py
