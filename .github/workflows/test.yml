@@ -16,6 +16,7 @@ on:
           - ob_fvg_only
           - confluence_only
           - ranking_only
+          - ranking_live
           - deep
 
 permissions:
@@ -104,6 +105,12 @@ jobs:
         if: ${{ inputs.test_mode == 'ranking_only' }}
         run: python test_ranking_only.py
 
+      - name: Run Ranking Live Test
+        if: ${{ inputs.test_mode == 'ranking_live' }}
+        env:
+          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+        run: python test_ranking_live.py
+
       - name: Run Deep Test
         if: ${{ inputs.test_mode == 'deep' }}
         env:
@@ -131,6 +138,8 @@ jobs:
           python test_confluence_only.py
 
           python test_ranking_only.py
+
+          python test_ranking_live.py
 
           if [ -f test_ob_state.py ]; then
             cp ob_state.json ob_state_backup.json || true
