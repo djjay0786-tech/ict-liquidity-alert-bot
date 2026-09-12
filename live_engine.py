@@ -5,13 +5,16 @@ from dxy_data import get_dxy_candles, prepare_dxy_candles
 
 from liquidity import (
     prepare_candles,
-    detect_liquidity_grab
+    detect_liquidity_grab,
+    format_alert
 )
 
 from session_liquidity import (
     detect_session_liquidity,
     format_session_alert
 )
+
+from telegram_alert import send_alert
 
 
 SYMBOLS = [
@@ -37,23 +40,81 @@ def get_market_data(symbol, timeframe):
 
         return prepare_dxy_candles(data)
 
-    else:
+    data = get_candles(
+        symbol,
+        interval=timeframe,
+        outputsize=200
+    )
 
-        data = get_candles(
-            symbol,
-            interval=timeframe,
-            outputsize=200
+    if "values" not in data:
+        return None
+
+    return prepare_candles(
+        data["values"]
+    )
+
+
+def send_liquidity_alert(
+    symbol,
+    timeframe,
+    alert
+):
+
+    message = format_alert(
+        symbol,
+        alert
+    )
+
+    message += (
+        f"\nTimeframe: {timeframe}"
+    )
+
+    try:
+
+        send_alert(message)
+
+        print(
+            "📲 Telegram alert sent"
         )
 
-        if "values" not in data:
-            return None
+    except Exception as e:
 
-        return prepare_candles(
-            data["values"]
+        print(
+            f"⚠️ Telegram error: {e}"
         )
 
 
-def check_previous_day_liquidity(
+def send_session_alert(
+    symbol,
+    timeframe,
+    alert
+):
+
+    message = format_session_alert(
+        symbol,
+        alert
+    )
+
+    message += (
+        f"\nTimeframe: {timeframe}"
+    )
+
+    try:
+
+        send_alert(message)
+
+        print(
+            "📲 Telegram session alert sent"
+        )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ Telegram error: {e}"
+        )
+
+
+def check_liquidity(
     symbol,
     timeframe,
     df
@@ -68,39 +129,20 @@ def check_previous_day_liquidity(
             f"{symbol} | {timeframe}"
         )
 
-        return
-
     for alert in alerts:
 
         print(
-            f"\n🚨 PREVIOUS DAY "
-            f"LIQUIDITY GRAB"
+            f"\n🚨 LIQUIDITY GRAB"
         )
 
         print(
-            f"Symbol: {symbol}"
+            f"{symbol} | {timeframe}"
         )
 
-        print(
-            f"Timeframe: {timeframe}"
-        )
-
-        print(
-            f"Type: {alert['type']}"
-        )
-
-        print(
-            f"Level: {alert['level']}"
-        )
-
-        print(
-            f"Liquidity: "
-            f"{alert['liquidity']}"
-        )
-
-        print(
-            f"Grab Price: "
-            f"{alert['price']}"
+        send_liquidity_alert(
+            symbol,
+            timeframe,
+            alert
         )
 
 
@@ -122,26 +164,22 @@ def check_session_liquidity(
 
         if not alerts:
 
-            print(
-                f"💧 No {session} "
-                f"session grab | "
-                f"{symbol} | {timeframe}"
-            )
-
             continue
 
         for alert in alerts:
 
             print(
-                "\n🚨 SESSION "
-                "LIQUIDITY GRAB"
+                f"\n🚨 SESSION LIQUIDITY"
             )
 
             print(
-                format_session_alert(
-                    symbol,
-                    alert
-                )
+                f"{symbol} | {timeframe}"
+            )
+
+            send_session_alert(
+                symbol,
+                timeframe,
+                alert
             )
 
 
@@ -180,14 +218,12 @@ def run_engine():
                     f"candles received"
                 )
 
-                # Previous Day Liquidity
-                check_previous_day_liquidity(
+                check_liquidity(
                     symbol,
                     timeframe,
                     df
                 )
 
-                # Session Liquidity
                 check_session_liquidity(
                     symbol,
                     timeframe,
