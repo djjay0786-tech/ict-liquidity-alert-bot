@@ -36,3 +36,6 @@ jobs:
         
       - name: Run DXY test
         run: python test_dxy.py
+        
+      - name: Run DXY liquidity test
+        run: python test_dxy_liquidity.py
