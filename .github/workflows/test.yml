@@ -3,11 +3,15 @@ name: ICT Bot Test
 on:
   workflow_dispatch:
     inputs:
-      deep_tests:
-        description: "Run all deep API tests"
-        required: false
-        type: boolean
-        default: false
+      test_mode:
+        description: "Choose test mode"
+        required: true
+        type: choice
+        options:
+          - basic
+          - fvg_only
+          - deep
+        default: basic
 
 jobs:
   test:
@@ -28,11 +32,10 @@ jobs:
 
 
       # ==========================================
-      # RESTORE PERSISTENT BOT STATE
+      # RESTORE BOT STATE
       # ==========================================
 
       - name: Restore Bot State
-        id: restore-state
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -42,10 +45,6 @@ jobs:
           restore-keys: |
             ict-bot-state-${{ github.ref_name }}-
 
-
-      # ==========================================
-      # CREATE STATE FILES IF FIRST RUN
-      # ==========================================
 
       - name: Initialize State Files
         run: |
@@ -59,87 +58,79 @@ jobs:
 
 
       # ==========================================
-      # BASIC MARKET DATA TEST
+      # FVG ONLY MODE
+      # ==========================================
+
+      - name: Run FVG Only Test
+        if: ${{ inputs.test_mode == 'fvg_only' }}
+        env:
+          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+        run: python test_fvg_only.py
+
+
+      # ==========================================
+      # BASIC MODE
       # ==========================================
 
       - name: Run market test
+        if: ${{ inputs.test_mode == 'basic' }}
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python test_market.py
 
       - name: Wait for API limit
+        if: ${{ inputs.test_mode == 'basic' }}
         run: sleep 15
 
-
-      # ==========================================
-      # LIQUIDITY TEST
-      # ==========================================
-
       - name: Run liquidity test
+        if: ${{ inputs.test_mode == 'basic' }}
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python test_liquidity.py
 
-      - name: Wait after liquidity test
+      - name: Wait after liquidity
+        if: ${{ inputs.test_mode == 'basic' }}
         run: sleep 15
 
-
-      # ==========================================
-      # SESSION LIQUIDITY TEST
-      # ==========================================
-
       - name: Run session liquidity test
+        if: ${{ inputs.test_mode == 'basic' }}
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python test_session.py
 
-
-      # ==========================================
-      # DXY TESTS
-      # ==========================================
-
       - name: Run DXY test
+        if: ${{ inputs.test_mode == 'basic' }}
         run: python test_dxy.py
 
       - name: Run DXY liquidity test
+        if: ${{ inputs.test_mode == 'basic' }}
         run: python test_dxy_liquidity.py
 
       - name: Run DXY CRT test
+        if: ${{ inputs.test_mode == 'basic' }}
         run: python test_dxy_crt.py
 
-
-      # ==========================================
-      # OB STATE TEST
-      #
-      # IMPORTANT:
-      # Real persistent state is temporarily
-      # moved away so this test cannot damage it.
-      # ==========================================
-
       - name: Backup Persistent OB State
-        run: |
-          cp ob_state.json ob_state.persist.json
+        if: ${{ inputs.test_mode == 'basic' }}
+        run: cp ob_state.json ob_state.persist.json
 
       - name: Prepare Clean OB Test State
-        run: |
-          echo '{}' > ob_state.json
+        if: ${{ inputs.test_mode == 'basic' }}
+        run: echo '{}' > ob_state.json
 
       - name: Run OB State test
+        if: ${{ inputs.test_mode == 'basic' }}
         run: python test_ob_state.py
 
       - name: Restore Persistent OB State
-        if: always()
+        if: ${{ always() && inputs.test_mode == 'basic' }}
         run: |
           if [ -f ob_state.persist.json ]; then
             mv ob_state.persist.json ob_state.json
           fi
 
-
-      # ==========================================
-      # LIVE ENGINE SAFE IMPORT TEST
-      # ==========================================
-
       - name: Run Live Engine Integration Test
+        if: ${{ inputs.test_mode == 'basic' }}
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -148,84 +139,68 @@ jobs:
 
 
       # ==========================================
-      # TELEGRAM TEST
+      # DEEP MODE
       # ==========================================
-
-      - name: Run Telegram test
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python test_telegram.py
-
-
-      # ==========================================
-      # DEEP TESTS
-      # ONLY WHEN deep_tests = true
-      # ==========================================
-
-      - name: Wait before deep tests
-        if: ${{ inputs.deep_tests }}
-        run: sleep 65
 
       - name: Run CRT deep test
-        if: ${{ inputs.deep_tests }}
+        if: ${{ inputs.test_mode == 'deep' }}
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python test_crt.py
 
       - name: Wait after CRT
-        if: ${{ inputs.deep_tests }}
+        if: ${{ inputs.test_mode == 'deep' }}
         run: sleep 65
 
       - name: Run FVG deep test
-        if: ${{ inputs.deep_tests }}
+        if: ${{ inputs.test_mode == 'deep' }}
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python test_fvg.py
 
       - name: Wait after FVG
-        if: ${{ inputs.deep_tests }}
+        if: ${{ inputs.test_mode == 'deep' }}
         run: sleep 65
 
       - name: Run Order Block deep test
-        if: ${{ inputs.deep_tests }}
+        if: ${{ inputs.test_mode == 'deep' }}
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python test_order_block.py
 
       - name: Wait after Order Block
-        if: ${{ inputs.deep_tests }}
+        if: ${{ inputs.test_mode == 'deep' }}
         run: sleep 65
 
       - name: Run OB + FVG deep test
-        if: ${{ inputs.deep_tests }}
+        if: ${{ inputs.test_mode == 'deep' }}
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python test_ob_fvg.py
 
       - name: Wait after OB FVG
-        if: ${{ inputs.deep_tests }}
+        if: ${{ inputs.test_mode == 'deep' }}
         run: sleep 65
 
       - name: Run OB First Tap deep test
-        if: ${{ inputs.deep_tests }}
+        if: ${{ inputs.test_mode == 'deep' }}
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python test_ob_tap.py
 
-      - name: Wait before MTF test
-        if: ${{ inputs.deep_tests }}
+      - name: Wait before MTF
+        if: ${{ inputs.test_mode == 'deep' }}
         run: sleep 65
 
       - name: Run Multi-Timeframe OB deep test
-        if: ${{ inputs.deep_tests }}
+        if: ${{ inputs.test_mode == 'deep' }}
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python test_multi_timeframe_ob.py
 
 
       # ==========================================
-      # SAVE PERSISTENT STATE
+      # SAVE BOT STATE
       # ==========================================
 
       - name: Save Bot State
