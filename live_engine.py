@@ -1,5 +1,5 @@
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from market_data import get_candles
@@ -56,14 +56,8 @@ from alert_state import (
     mark_alert_sent
 )
 
-from telegram_alert import (
-    send_alert
-)
+from telegram_alert import send_alert
 
-
-# ==========================================
-# SYMBOLS
-# ==========================================
 
 SYMBOLS = [
     "EUR/USD",
@@ -72,30 +66,80 @@ SYMBOLS = [
 ]
 
 
-# ==========================================
-# TIMEFRAMES
-#
-# Twelve Data Daily = 1day
-# Biquote DXY Daily = 1d
-# ==========================================
-
 TIMEFRAMES = {
     "H1": {
         "twelve": "1h",
-        "dxy": "1h"
+        "dxy": "1h",
+        "fresh_hours": 2
     },
+
     "H4": {
         "twelve": "4h",
-        "dxy": "4h"
+        "dxy": "4h",
+        "fresh_hours": 8
     },
+
     "DAILY": {
         "twelve": "1day",
-        "dxy": "1d"
+        "dxy": "1d",
+        "fresh_hours": 48
     }
 }
 
 
 UTC = ZoneInfo("UTC")
+
+
+# ==========================================
+# FRESHNESS
+# ==========================================
+
+def is_fresh(
+    event_time,
+    timeframe
+):
+
+    if not event_time:
+        return False
+
+    try:
+
+        event_dt = datetime.fromisoformat(
+            str(event_time)
+            .replace("Z", "+00:00")
+        )
+
+        if event_dt.tzinfo is None:
+
+            event_dt = event_dt.replace(
+                tzinfo=UTC
+            )
+
+        event_dt = event_dt.astimezone(
+            UTC
+        )
+
+    except Exception:
+
+        return False
+
+    now = datetime.now(
+        UTC
+    )
+
+    max_age = timedelta(
+        hours=TIMEFRAMES[
+            timeframe
+        ]["fresh_hours"]
+    )
+
+    age = now - event_dt
+
+    return (
+        timedelta(0)
+        <= age
+        <= max_age
+    )
 
 
 # ==========================================
@@ -179,8 +223,8 @@ def send_once(
     ):
 
         print(
-            f"🚫 Duplicate "
-            f"{label} alert blocked"
+            f"🚫 Duplicate {label} "
+            f"alert blocked"
         )
 
         return False
@@ -227,13 +271,8 @@ def check_session_open_close():
 
     for event in events:
 
-        session = event[
-            "session"
-        ]
-
-        event_type = event[
-            "event"
-        ]
+        session = event["session"]
+        event_type = event["event"]
 
         alert_id = make_alert_id(
             "SESSION_EVENT",
@@ -249,11 +288,6 @@ def check_session_open_close():
             )
         )
 
-        print(
-            f"\n🚨 {session} "
-            f"SESSION {event_type}"
-        )
-
         send_once(
             alert_id,
             message,
@@ -264,9 +298,7 @@ def check_session_open_close():
 
 # ==========================================
 # PDH / PDL LIQUIDITY
-#
 # H1 ONLY
-# Prevent duplicate H1/H4/Daily alerts.
 # ==========================================
 
 def check_liquidity(
@@ -278,31 +310,34 @@ def check_liquidity(
     if timeframe != "H1":
         return
 
-    alerts = (
-        detect_liquidity_grab(
-            df
-        )
+    alerts = detect_liquidity_grab(
+        df
     )
 
-    if not alerts:
+    for alert in alerts:
 
-        print(
-            f"💧 No PDH/PDL grab | "
-            f"{symbol} | {timeframe}"
+        event_time = alert.get(
+            "time",
+            ""
         )
 
-        return
+        if not is_fresh(
+            event_time,
+            timeframe
+        ):
 
-    for alert in alerts:
+            print(
+                f"🕰️ Old liquidity ignored | "
+                f"{symbol} | {event_time}"
+            )
+
+            continue
 
         alert_id = make_alert_id(
             "LIQUIDITY",
             symbol,
             timeframe,
-            alert.get(
-                "time",
-                ""
-            ),
+            event_time,
             (
                 f"{alert.get('type', '')}|"
                 f"{alert.get('level', '')}"
@@ -319,10 +354,6 @@ def check_liquidity(
             f"{timeframe}"
         )
 
-        print(
-            "\n🚨 LIQUIDITY GRAB"
-        )
-
         send_once(
             alert_id,
             message,
@@ -333,7 +364,6 @@ def check_liquidity(
 
 # ==========================================
 # SESSION LIQUIDITY
-#
 # H1 ONLY
 # ==========================================
 
@@ -358,25 +388,36 @@ def check_session_liquidity(
             )
         )
 
-        if not alerts:
-            continue
-
         for alert in alerts:
 
-            alert_id = (
-                make_alert_id(
-                    "SESSION_LIQUIDITY",
-                    symbol,
-                    timeframe,
-                    alert.get(
-                        "time",
-                        ""
-                    ),
-                    (
-                        f"{session}|"
-                        f"{alert.get('level', '')}|"
-                        f"{alert.get('type', '')}"
-                    )
+            event_time = alert.get(
+                "time",
+                ""
+            )
+
+            if not is_fresh(
+                event_time,
+                timeframe
+            ):
+
+                print(
+                    f"🕰️ Old session "
+                    f"liquidity ignored | "
+                    f"{symbol} | "
+                    f"{event_time}"
+                )
+
+                continue
+
+            alert_id = make_alert_id(
+                "SESSION_LIQUIDITY",
+                symbol,
+                timeframe,
+                event_time,
+                (
+                    f"{session}|"
+                    f"{alert.get('level', '')}|"
+                    f"{alert.get('type', '')}"
                 )
             )
 
@@ -392,11 +433,6 @@ def check_session_liquidity(
                 f"{timeframe}"
             )
 
-            print(
-                "\n🚨 SESSION "
-                "LIQUIDITY"
-            )
-
             send_once(
                 alert_id,
                 message,
@@ -407,7 +443,6 @@ def check_session_liquidity(
 
 # ==========================================
 # CRT
-#
 # H1 + H4 ONLY
 # ==========================================
 
@@ -427,25 +462,33 @@ def check_crt(
         df
     )
 
-    if not alerts:
+    for alert in alerts:
 
-        print(
-            f"🕯️ No CRT | "
-            f"{symbol} | {timeframe}"
+        confirmation_time = (
+            alert.get(
+                "second_candle_time",
+                ""
+            )
         )
 
-        return
+        if not is_fresh(
+            confirmation_time,
+            timeframe
+        ):
 
-    for alert in alerts:
+            print(
+                f"🕰️ Old CRT ignored | "
+                f"{symbol} | "
+                f"{timeframe}"
+            )
+
+            continue
 
         alert_id = make_alert_id(
             "CRT",
             symbol,
             timeframe,
-            alert.get(
-                "second_candle_time",
-                ""
-            ),
+            confirmation_time,
             alert.get(
                 "type",
                 ""
@@ -460,10 +503,6 @@ def check_crt(
             )
         )
 
-        print(
-            "\n🚨 CRT DETECTED"
-        )
-
         send_once(
             alert_id,
             message,
@@ -474,7 +513,6 @@ def check_crt(
 
 # ==========================================
 # VALID FVG
-#
 # H1 + H4 + DAILY
 # ==========================================
 
@@ -484,49 +522,49 @@ def check_fvg(
     df
 ):
 
-    valid_fvgs = (
-        get_valid_fvgs(
-            df
-        )
+    valid_fvgs = get_valid_fvgs(
+        df
     )
 
     if not valid_fvgs:
+        return
+
+    latest_fvg = valid_fvgs[-1]
+
+    fvg_time = latest_fvg.get(
+        "time",
+        ""
+    )
+
+    if not is_fresh(
+        fvg_time,
+        timeframe
+    ):
 
         print(
-            f"🟩 No valid FVG | "
-            f"{symbol} | {timeframe}"
+            f"🕰️ Old FVG ignored | "
+            f"{symbol} | "
+            f"{timeframe} | "
+            f"{fvg_time}"
         )
 
         return
-
-    latest_fvg = (
-        valid_fvgs[-1]
-    )
 
     alert_id = make_alert_id(
         "FVG",
         symbol,
         timeframe,
-        latest_fvg.get(
-            "time",
-            ""
-        ),
+        fvg_time,
         latest_fvg.get(
             "type",
             ""
         )
     )
 
-    message = (
-        format_fvg_alert(
-            symbol,
-            timeframe,
-            latest_fvg
-        )
-    )
-
-    print(
-        "\n🚨 VALID FVG"
+    message = format_fvg_alert(
+        symbol,
+        timeframe,
+        latest_fvg
     )
 
     send_once(
@@ -539,9 +577,10 @@ def check_fvg(
 
 # ==========================================
 # OB + FVG
-#
-# VALID FVG + VALID OB
 # H1 + H4 + DAILY
+#
+# OB may be older.
+# FVG must be fresh.
 # ==========================================
 
 def check_ob_fvg(
@@ -550,35 +589,43 @@ def check_ob_fvg(
     df
 ):
 
-    setup = (
-        select_ob_near_fvg(
-            df
-        )
+    setup = select_ob_near_fvg(
+        df
     )
 
     if setup is None:
-
-        print(
-            f"📦 No valid OB + FVG | "
-            f"{symbol} | {timeframe}"
-        )
-
         return
 
     ob = setup["ob"]
     fvg = setup["fvg"]
 
+    fvg_time = fvg.get(
+        "time",
+        ""
+    )
+
+    if not is_fresh(
+        fvg_time,
+        timeframe
+    ):
+
+        print(
+            f"🕰️ Old OB+FVG "
+            f"setup ignored | "
+            f"{symbol} | "
+            f"{timeframe}"
+        )
+
+        return
+
     alert_id = make_alert_id(
         "OB_FVG",
         symbol,
         timeframe,
-        ob.get(
-            "time",
-            ""
-        ),
+        fvg_time,
         (
             f"{ob.get('type', '')}|"
-            f"{fvg.get('time', '')}"
+            f"{ob.get('time', '')}"
         )
     )
 
@@ -588,23 +635,6 @@ def check_ob_fvg(
             timeframe,
             setup
         )
-    )
-
-    print(
-        "\n🚨 OB + FVG SETUP"
-    )
-
-    print(
-        f"OB: {ob['type']}"
-    )
-
-    print(
-        f"FVG: {fvg['type']}"
-    )
-
-    print(
-        f"Distance: "
-        f"{setup['distance']}"
     )
 
     send_once(
@@ -619,7 +649,11 @@ def check_ob_fvg(
 
 
 # ==========================================
-# ORDER BLOCK FIRST TAP
+# OB FIRST TAP
+#
+# This is event-based.
+# The latest candle itself must be the
+# first candle touching the OB.
 # ==========================================
 
 def check_ob_first_tap(
@@ -628,19 +662,11 @@ def check_ob_first_tap(
     df
 ):
 
-    setup = (
-        select_ob_near_fvg(
-            df
-        )
+    setup = select_ob_near_fvg(
+        df
     )
 
     if setup is None:
-
-        print(
-            f"👆 No valid OB | "
-            f"{symbol} | {timeframe}"
-        )
-
         return
 
     ob = setup["ob"]
@@ -650,40 +676,38 @@ def check_ob_first_tap(
         timeframe,
         ob
     ):
-
-        print(
-            f"🚫 OB already tapped | "
-            f"{symbol} | {timeframe}"
-        )
-
         return
 
     if not is_latest_candle_first_tap(
         df,
         ob
     ):
-
-        print(
-            f"⏳ No new first OB tap | "
-            f"{symbol} | {timeframe}"
-        )
-
         return
 
     candle = df.iloc[-1]
 
-    message = (
-        create_tap_alert(
-            symbol,
-            timeframe,
-            ob,
-            candle
-        )
+    candle_time = str(
+        candle["datetime"]
     )
 
-    print(
-        "\n🚨 ORDER BLOCK "
-        "FIRST TAP"
+    if not is_fresh(
+        candle_time,
+        timeframe
+    ):
+
+        print(
+            f"🕰️ Old OB tap ignored | "
+            f"{symbol} | "
+            f"{timeframe}"
+        )
+
+        return
+
+    message = create_tap_alert(
+        symbol,
+        timeframe,
+        ob,
+        candle
     )
 
     sent = send_message(
@@ -717,7 +741,6 @@ def run_engine():
         "=" * 60
     )
 
-    # Session Open / Close
     check_session_open_close()
 
     for symbol in SYMBOLS:
@@ -725,26 +748,16 @@ def run_engine():
         for timeframe in TIMEFRAMES:
 
             print(
-                "\n" + "-" * 60
-            )
-
-            print(
-                f"Checking "
+                f"\nChecking "
                 f"{symbol} | "
                 f"{timeframe}"
             )
 
-            print(
-                "-" * 60
-            )
-
             try:
 
-                df = (
-                    get_market_data(
-                        symbol,
-                        timeframe
-                    )
+                df = get_market_data(
+                    symbol,
+                    timeframe
                 )
 
                 if (
@@ -763,42 +776,36 @@ def run_engine():
                     f"candles received"
                 )
 
-                # H1 only
                 check_liquidity(
                     symbol,
                     timeframe,
                     df
                 )
 
-                # H1 only
                 check_session_liquidity(
                     symbol,
                     timeframe,
                     df
                 )
 
-                # H1 + H4 only
                 check_crt(
                     symbol,
                     timeframe,
                     df
                 )
 
-                # H1 + H4 + Daily
                 check_fvg(
                     symbol,
                     timeframe,
                     df
                 )
 
-                # H1 + H4 + Daily
                 check_ob_fvg(
                     symbol,
                     timeframe,
                     df
                 )
 
-                # H1 + H4 + Daily
                 check_ob_first_tap(
                     symbol,
                     timeframe,
@@ -813,7 +820,6 @@ def run_engine():
                     f"{timeframe}: {e}"
                 )
 
-            # Avoid rapid requests
             time.sleep(3)
 
 
