@@ -14,6 +14,7 @@ on:
           - session_liquidity_only
           - fvg_only
           - ob_fvg_only
+          - confluence_only
           - deep
 
 permissions:
@@ -72,6 +73,7 @@ jobs:
             ob_state.py \
             alert_state.py \
             telegram_alert.py \
+            confluence.py \
             live_engine.py
 
           python -c "import live_engine; print('✅ BASIC IMPORT TEST PASSED')"
@@ -91,6 +93,10 @@ jobs:
       - name: Run OB FVG Only Test
         if: ${{ inputs.test_mode == 'ob_fvg_only' }}
         run: python test_ob_fvg_only.py
+
+      - name: Run Confluence Only Test
+        if: ${{ inputs.test_mode == 'confluence_only' }}
+        run: python test_confluence_only.py
 
       - name: Run Deep Test
         if: ${{ inputs.test_mode == 'deep' }}
@@ -115,6 +121,8 @@ jobs:
           python test_fvg_only.py
 
           python test_ob_fvg_only.py
+
+          python test_confluence_only.py
 
           if [ -f test_ob_state.py ]; then
             cp ob_state.json ob_state_backup.json || true
