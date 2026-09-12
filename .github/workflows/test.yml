@@ -10,6 +10,7 @@ on:
         options:
           - basic
           - fvg_only
+          - ob_fvg_only
           - deep
         default: basic
 
@@ -45,7 +46,6 @@ jobs:
           restore-keys: |
             ict-bot-state-${{ github.ref_name }}-
 
-
       - name: Initialize State Files
         run: |
           if [ ! -f ob_state.json ]; then
@@ -63,9 +63,16 @@ jobs:
 
       - name: Run FVG Only Test
         if: ${{ inputs.test_mode == 'fvg_only' }}
-        env:
-          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python test_fvg_only.py
+
+
+      # ==========================================
+      # OB + FVG ONLY MODE
+      # ==========================================
+
+      - name: Run OB FVG Only Test
+        if: ${{ inputs.test_mode == 'ob_fvg_only' }}
+        run: python test_ob_fvg_only.py
 
 
       # ==========================================
