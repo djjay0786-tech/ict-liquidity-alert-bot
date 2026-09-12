@@ -1,5 +1,5 @@
 import pandas as pd
-from datetime import time
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 
@@ -42,116 +42,216 @@ def prepare_candles(values):
             errors="coerce"
         )
 
+    df = df.dropna(
+        subset=["datetime", "high", "low"]
+    )
+
     df = df.sort_values("datetime")
     df = df.reset_index(drop=True)
 
     return df
 
 
-def get_session_candles(df, session_name, date=None):
+def get_session_range(
+    df,
+    session_name,
+    session_date
+):
 
     session = SESSIONS[session_name]
 
-    timezone = ZoneInfo(session["timezone"])
+    tz = ZoneInfo(session["timezone"])
 
-    local_df = df.copy()
+    start_local = datetime.combine(
+        session_date,
+        session["start"]
+    ).replace(tzinfo=tz)
 
-    # Convert UTC -> session local timezone
-    local_df["local_time"] = (
-        local_df["datetime"]
-        .dt.tz_convert(timezone)
+    end_local = datetime.combine(
+        session_date,
+        session["end"]
+    ).replace(tzinfo=tz)
+
+    start_utc = start_local.astimezone(
+        ZoneInfo("UTC")
     )
 
-    local_df["local_date"] = (
-        local_df["local_time"].dt.date
+    end_utc = end_local.astimezone(
+        ZoneInfo("UTC")
     )
 
-    local_df["local_clock"] = (
-        local_df["local_time"].dt.time
-    )
-
-    if date is None:
-        date = local_df["local_date"].iloc[-1]
-
-    result = local_df[
-        (local_df["local_date"] == date) &
-        (local_df["local_clock"] >= session["start"]) &
-        (local_df["local_clock"] < session["end"])
+    session_df = df[
+        (df["datetime"] >= start_utc) &
+        (df["datetime"] < end_utc)
     ]
-
-    return result
-
-
-def calculate_session_levels(df, session_name, date=None):
-
-    session_df = get_session_candles(
-        df,
-        session_name,
-        date
-    )
 
     if session_df.empty:
         return None
 
     return {
         "session": session_name,
-        "date": str(
-            session_df["local_date"].iloc[0]
-        ),
-        "high": float(
-            session_df["high"].max()
-        ),
-        "low": float(
-            session_df["low"].min()
-        ),
+        "date": str(session_date),
+        "high": float(session_df["high"].max()),
+        "low": float(session_df["low"].min()),
     }
 
 
-def detect_session_liquidity_grab(
+def get_previous_session_levels(
     df,
+    current_time,
     session_name
 ):
 
-    levels = calculate_session_levels(
-        df,
-        session_name
-    )
+    session = SESSIONS[session_name]
 
-    if not levels:
+    tz = ZoneInfo(session["timezone"])
+
+    current_local = current_time.astimezone(tz)
+
+    current_date = current_local.date()
+
+    # Check today and previous few days
+    for days_back in range(0, 5):
+
+        check_date = (
+            current_date -
+            timedelta(days=days_back)
+        )
+
+        levels = get_session_range(
+            df,
+            session_name,
+            check_date
+        )
+
+        if levels:
+
+            session_end = datetime.combine(
+                check_date,
+                session["end"]
+            ).replace(tzinfo=tz)
+
+            session_end_utc = session_end.astimezone(
+                ZoneInfo("UTC")
+            )
+
+            # Session must already be completed
+            if session_end_utc < current_time:
+
+                return levels
+
+    return None
+
+
+def detect_session_liquidity(
+    df,
+    current_session
+):
+
+    if df.empty:
         return []
 
     latest = df.iloc[-1]
 
+    current_time = latest["datetime"]
+
     alerts = []
 
-    # Sweep session LOW
-    if latest["low"] < levels["low"]:
+    # ==================================================
+    # 1. ASIA LIQUIDITY → USED DURING LONDON
+    # ==================================================
 
-        alerts.append({
-            "type": "BULLISH SESSION LIQUIDITY GRAB",
-            "session": session_name,
-            "level": "SESSION LOW",
-            "liquidity": levels["low"],
-            "grab_price": float(latest["low"]),
-            "time": str(latest["datetime"]),
-        })
+    if current_session == "LONDON":
 
-    # Sweep session HIGH
-    if latest["high"] > levels["high"]:
+        asia = get_previous_session_levels(
+            df,
+            current_time,
+            "ASIA"
+        )
 
-        alerts.append({
-            "type": "BEARISH SESSION LIQUIDITY GRAB",
-            "session": session_name,
-            "level": "SESSION HIGH",
-            "liquidity": levels["high"],
-            "grab_price": float(latest["high"]),
-            "time": str(latest["datetime"]),
-        })
+        if asia:
+
+            if latest["low"] < asia["low"]:
+
+                alerts.append({
+                    "type": "BULLISH LIQUIDITY GRAB",
+                    "source": "ASIA",
+                    "level": "ASIA LOW",
+                    "liquidity": asia["low"],
+                    "grab_price": float(
+                        latest["low"]
+                    ),
+                    "time": str(
+                        latest["datetime"]
+                    ),
+                })
+
+            if latest["high"] > asia["high"]:
+
+                alerts.append({
+                    "type": "BEARISH LIQUIDITY GRAB",
+                    "source": "ASIA",
+                    "level": "ASIA HIGH",
+                    "liquidity": asia["high"],
+                    "grab_price": float(
+                        latest["high"]
+                    ),
+                    "time": str(
+                        latest["datetime"]
+                    ),
+                )
+
+    # ==================================================
+    # 2. LONDON LIQUIDITY → USED DURING NEW YORK
+    # ==================================================
+
+    if current_session == "NEW YORK":
+
+        london = get_previous_session_levels(
+            df,
+            current_time,
+            "LONDON"
+        )
+
+        if london:
+
+            if latest["low"] < london["low"]:
+
+                alerts.append({
+                    "type": "BULLISH LIQUIDITY GRAB",
+                    "source": "LONDON",
+                    "level": "LONDON LOW",
+                    "liquidity": london["low"],
+                    "grab_price": float(
+                        latest["low"]
+                    ),
+                    "time": str(
+                        latest["datetime"]
+                    ),
+                })
+
+            if latest["high"] > london["high"]:
+
+                alerts.append({
+                    "type": "BEARISH LIQUIDITY GRAB",
+                    "source": "LONDON",
+                    "level": "LONDON HIGH",
+                    "liquidity": london["high"],
+                    "grab_price": float(
+                        latest["high"]
+                    ),
+                    "time": str(
+                        latest["datetime"]
+                    ),
+                )
 
     return alerts
 
 
-def format_session_alert(symbol, alert):
+def format_session_alert(
+    symbol,
+    alert
+):
 
     emoji = (
         "🟢"
@@ -160,12 +260,13 @@ def format_session_alert(symbol, alert):
     )
 
     return (
-        f"{emoji} SESSION LIQUIDITY GRAB\n\n"
+        f"{emoji} LIQUIDITY GRAB\n\n"
         f"Symbol: {symbol}\n"
-        f"Session: {alert['session']}\n"
-        f"Type: {alert['type']}\n"
+        f"Source: {alert['source']}\n"
         f"Level: {alert['level']}\n"
-        f"Liquidity: {alert['liquidity']:.5f}\n"
-        f"Grab Price: {alert['grab_price']:.5f}\n"
+        f"Liquidity: "
+        f"{alert['liquidity']:.5f}\n"
+        f"Grab Price: "
+        f"{alert['grab_price']:.5f}\n"
         f"Time: {alert['time']}"
-          )
+    )
