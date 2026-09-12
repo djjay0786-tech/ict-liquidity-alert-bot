@@ -67,6 +67,11 @@ def test_pdh_sweep():
         == "PDH"
     )
 
+    assert (
+        alerts[0]["type"]
+        == "BEARISH LIQUIDITY GRAB"
+    )
+
     print(
         "\n✅ PDH SWEEP TEST PASSED"
     )
@@ -109,8 +114,111 @@ def test_pdl_sweep():
         == "PDL"
     )
 
+    assert (
+        alerts[0]["type"]
+        == "BULLISH LIQUIDITY GRAB"
+    )
+
     print(
         "\n✅ PDL SWEEP TEST PASSED"
+    )
+
+
+def test_pdh_first_sweep_only():
+
+    df = make_df([
+        {
+            "datetime": "2026-09-11 00:00:00+00:00",
+            "open": 1.1700,
+            "high": 1.1750,
+            "low": 1.1680,
+            "close": 1.1720,
+        },
+        {
+            "datetime": "2026-09-11 12:00:00+00:00",
+            "open": 1.1720,
+            "high": 1.1740,
+            "low": 1.1690,
+            "close": 1.1710,
+        },
+
+        # First PDH sweep
+        {
+            "datetime": "2026-09-12 01:00:00+00:00",
+            "open": 1.1730,
+            "high": 1.1760,
+            "low": 1.1720,
+            "close": 1.1755,
+        },
+
+        # Still above PDH
+        # This must NOT create another alert
+        {
+            "datetime": "2026-09-12 02:00:00+00:00",
+            "open": 1.1755,
+            "high": 1.1770,
+            "low": 1.1740,
+            "close": 1.1760,
+        }
+    ])
+
+    alerts = detect_liquidity_grab(
+        df
+    )
+
+    assert len(alerts) == 0
+
+    print(
+        "\n✅ PDH FIRST-SWEEP PROTECTION PASSED"
+    )
+
+
+def test_pdl_first_sweep_only():
+
+    df = make_df([
+        {
+            "datetime": "2026-09-11 00:00:00+00:00",
+            "open": 1.1700,
+            "high": 1.1750,
+            "low": 1.1680,
+            "close": 1.1720,
+        },
+        {
+            "datetime": "2026-09-11 12:00:00+00:00",
+            "open": 1.1720,
+            "high": 1.1740,
+            "low": 1.1690,
+            "close": 1.1710,
+        },
+
+        # First PDL sweep
+        {
+            "datetime": "2026-09-12 01:00:00+00:00",
+            "open": 1.1690,
+            "high": 1.1700,
+            "low": 1.1670,
+            "close": 1.1680,
+        },
+
+        # Still below PDL
+        # This must NOT create another alert
+        {
+            "datetime": "2026-09-12 02:00:00+00:00",
+            "open": 1.1680,
+            "high": 1.1690,
+            "low": 1.1660,
+            "close": 1.1670,
+        }
+    ])
+
+    alerts = detect_liquidity_grab(
+        df
+    )
+
+    assert len(alerts) == 0
+
+    print(
+        "\n✅ PDL FIRST-SWEEP PROTECTION PASSED"
     )
 
 
@@ -140,10 +248,8 @@ def test_dh_sweep():
         }
     ])
 
-    levels = (
-        get_prior_current_day_levels(
-            df
-        )
+    levels = get_prior_current_day_levels(
+        df
     )
 
     assert round(
@@ -151,10 +257,8 @@ def test_dh_sweep():
         5
     ) == 1.17300
 
-    alerts = (
-        detect_daily_liquidity_grab(
-            df
-        )
+    alerts = detect_daily_liquidity_grab(
+        df
     )
 
     assert len(alerts) == 1
@@ -207,10 +311,8 @@ def test_dl_sweep():
         }
     ])
 
-    alerts = (
-        detect_daily_liquidity_grab(
-            df
-        )
+    alerts = detect_daily_liquidity_grab(
+        df
     )
 
     assert len(alerts) == 1
@@ -256,10 +358,8 @@ def test_no_daily_sweep():
         }
     ])
 
-    alerts = (
-        detect_daily_liquidity_grab(
-            df
-        )
+    alerts = detect_daily_liquidity_grab(
+        df
     )
 
     assert len(alerts) == 0
@@ -275,6 +375,10 @@ if __name__ == "__main__":
 
     test_pdl_sweep()
 
+    test_pdh_first_sweep_only()
+
+    test_pdl_first_sweep_only()
+
     test_dh_sweep()
 
     test_dl_sweep()
@@ -282,5 +386,5 @@ if __name__ == "__main__":
     test_no_daily_sweep()
 
     print(
-        "\n🔥 ALL LIQUIDITY TESTS PASSED"
+        "\n🔥 ALL LIQUIDITY + FIRST-SWEEP TESTS PASSED"
     )
