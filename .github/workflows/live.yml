@@ -1,7 +1,15 @@
-name: ICT Bot Live Test
+name: ICT Bot Live
 
 on:
   workflow_dispatch:
+
+  schedule:
+    # Monday to Friday - every 15 minutes
+    - cron: "*/15 * * * 1-5"
+
+    # Sunday 15:00 UTC onwards
+    # Needed for Monday Asia session
+    - cron: "*/15 15-23 * * 0"
 
 permissions:
   contents: read
