@@ -1,30 +1,61 @@
 import pandas as pd
 
 
+# ============================================================
+# PREPARE CANDLES
+# ============================================================
+
 def prepare_candles(values):
-    """
-    Twelve Data candles -> pandas DataFrame
-    """
 
     df = pd.DataFrame(values)
 
     if df.empty:
         return df
 
-    df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
+    df["datetime"] = pd.to_datetime(
+        df["datetime"],
+        utc=True
+    )
 
-    for col in ["open", "high", "low", "close"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
+    for column in [
+        "open",
+        "high",
+        "low",
+        "close"
+    ]:
 
-    df = df.sort_values("datetime").reset_index(drop=True)
+        df[column] = pd.to_numeric(
+            df[column],
+            errors="coerce"
+        )
+
+    df = df.dropna(
+        subset=[
+            "datetime",
+            "high",
+            "low"
+        ]
+    )
+
+    df = df.sort_values(
+        "datetime"
+    )
+
+    df = df.reset_index(
+        drop=True
+    )
 
     return df
 
 
+# ============================================================
+# PREVIOUS DAY HIGH / LOW
+# ============================================================
+
 def previous_day_levels(df):
-    """
-    Previous Day High / Low
-    """
+
+    if df.empty:
+        return None
 
     df = df.copy()
 
@@ -46,14 +77,20 @@ def previous_day_levels(df):
     }
 
 
+# ============================================================
+# CURRENT DAY HIGH / LOW
+# ============================================================
+
 def current_day_levels(df):
-    """
-    Current Day High / Low
-    """
+
+    if df.empty:
+        return None
 
     today = df["datetime"].dt.date.iloc[-1]
 
-    today_df = df[df["datetime"].dt.date == today]
+    today_df = df[
+        df["datetime"].dt.date == today
+    ]
 
     if today_df.empty:
         return None
@@ -64,72 +101,111 @@ def current_day_levels(df):
     }
 
 
+# ============================================================
+# DETECT PREVIOUS DAY LIQUIDITY GRAB
+# ============================================================
+
 def detect_liquidity_grab(df):
-    """
-    Detect liquidity sweep/grab.
-
-    Bullish liquidity grab:
-    Price goes below liquidity level.
-
-    Bearish liquidity grab:
-    Price goes above liquidity level.
-    """
 
     if len(df) < 3:
         return []
 
     levels = previous_day_levels(df)
 
-    if not levels:
+    if levels is None:
         return []
 
     latest = df.iloc[-1]
 
     alerts = []
 
-    # =========================
-    # PREVIOUS DAY LOW
-    # =========================
+
+    # ========================================================
+    # PREVIOUS DAY LOW SWEEP
+    # ========================================================
 
     if latest["low"] < levels["PDL"]:
+
         alerts.append({
+
             "type": "BULLISH LIQUIDITY GRAB",
+
             "level": "Previous Day Low",
-            "price": float(latest["low"]),
+
+            "price": float(
+                latest["low"]
+            ),
+
             "liquidity": levels["PDL"],
-            "time": str(latest["datetime"])
+
+            "time": str(
+                latest["datetime"]
+            )
+
         })
 
-    # =========================
-    # PREVIOUS DAY HIGH
-    # =========================
+
+    # ========================================================
+    # PREVIOUS DAY HIGH SWEEP
+    # ========================================================
 
     if latest["high"] > levels["PDH"]:
+
         alerts.append({
+
             "type": "BEARISH LIQUIDITY GRAB",
+
             "level": "Previous Day High",
-            "price": float(latest["high"]),
+
+            "price": float(
+                latest["high"]
+            ),
+
             "liquidity": levels["PDH"],
-            "time": str(latest["datetime"])
+
+            "time": str(
+                latest["datetime"]
+            )
+
         })
+
 
     return alerts
 
 
+# ============================================================
+# FORMAT ALERT
+# ============================================================
+
 def format_alert(symbol, alert):
 
-    direction = alert["type"]
+    if "BULLISH" in alert["type"]:
 
-    emoji = "🟢" if "BULLISH" in direction else "🔴"
+        emoji = "🟢"
+
+    else:
+
+        emoji = "🔴"
+
 
     message = (
+
         f"{emoji} LIQUIDITY GRAB\n\n"
+
         f"Symbol: {symbol}\n"
-        f"Type: {direction}\n"
+
+        f"Type: {alert['type']}\n"
+
         f"Level: {alert['level']}\n"
-        f"Liquidity: {alert['liquidity']:.5f}\n"
-        f"Grab Price: {alert['price']:.5f}\n"
+
+        f"Liquidity: "
+        f"{alert['liquidity']:.5f}\n"
+
+        f"Grab Price: "
+        f"{alert['price']:.5f}\n"
+
         f"Time: {alert['time']}"
+
     )
 
     return message
