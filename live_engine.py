@@ -2,7 +2,16 @@ import time
 
 from market_data import get_candles
 from dxy_data import get_dxy_candles, prepare_dxy_candles
-from liquidity import prepare_candles, detect_liquidity_grab
+
+from liquidity import (
+    prepare_candles,
+    detect_liquidity_grab
+)
+
+from session_liquidity import (
+    detect_session_liquidity,
+    format_session_alert
+)
 
 
 SYMBOLS = [
@@ -44,14 +53,18 @@ def get_market_data(symbol, timeframe):
         )
 
 
-def check_liquidity(symbol, timeframe, df):
+def check_previous_day_liquidity(
+    symbol,
+    timeframe,
+    df
+):
 
     alerts = detect_liquidity_grab(df)
 
     if not alerts:
 
         print(
-            f"💧 No liquidity grab | "
+            f"💧 No PDH/PDL grab | "
             f"{symbol} | {timeframe}"
         )
 
@@ -60,7 +73,8 @@ def check_liquidity(symbol, timeframe, df):
     for alert in alerts:
 
         print(
-            f"\n🚨 LIQUIDITY GRAB DETECTED"
+            f"\n🚨 PREVIOUS DAY "
+            f"LIQUIDITY GRAB"
         )
 
         print(
@@ -80,16 +94,55 @@ def check_liquidity(symbol, timeframe, df):
         )
 
         print(
-            f"Liquidity: {alert['liquidity']}"
+            f"Liquidity: "
+            f"{alert['liquidity']}"
         )
 
         print(
-            f"Grab Price: {alert['price']}"
+            f"Grab Price: "
+            f"{alert['price']}"
         )
 
-        print(
-            f"Time: {alert['time']}"
+
+def check_session_liquidity(
+    symbol,
+    timeframe,
+    df
+):
+
+    for session in [
+        "LONDON",
+        "NEW YORK"
+    ]:
+
+        alerts = detect_session_liquidity(
+            df,
+            session
         )
+
+        if not alerts:
+
+            print(
+                f"💧 No {session} "
+                f"session grab | "
+                f"{symbol} | {timeframe}"
+            )
+
+            continue
+
+        for alert in alerts:
+
+            print(
+                "\n🚨 SESSION "
+                "LIQUIDITY GRAB"
+            )
+
+            print(
+                format_session_alert(
+                    symbol,
+                    alert
+                )
+            )
 
 
 def run_engine():
@@ -123,10 +176,19 @@ def run_engine():
                     continue
 
                 print(
-                    f"✅ {len(df)} candles received"
+                    f"✅ {len(df)} "
+                    f"candles received"
                 )
 
-                check_liquidity(
+                # Previous Day Liquidity
+                check_previous_day_liquidity(
+                    symbol,
+                    timeframe,
+                    df
+                )
+
+                # Session Liquidity
+                check_session_liquidity(
                     symbol,
                     timeframe,
                     df
