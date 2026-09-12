@@ -19,6 +19,7 @@ def prepare_candles(values):
         "low",
         "close"
     ]:
+
         df[column] = pd.to_numeric(
             df[column],
             errors="coerce"
@@ -151,11 +152,8 @@ def current_day_levels(df):
 def get_prior_current_day_levels(df):
 
     """
-    Calculate today's High/Low BEFORE
+    Today's High/Low BEFORE
     the latest candle.
-
-    This prevents the latest candle from
-    using its own high/low as liquidity.
     """
 
     if df is None or len(df) < 2:
@@ -167,10 +165,8 @@ def get_prior_current_day_levels(df):
         data["datetime"].dt.date
     )
 
-    latest = data.iloc[-1]
-
     current_date = (
-        latest["date"]
+        data.iloc[-1]["date"]
     )
 
     prior_today = data.iloc[:-1]
@@ -197,7 +193,8 @@ def get_prior_current_day_levels(df):
 
 
 # ==========================================
-# PDH / PDL DETECTION
+# PDH / PDL
+# FIRST SWEEP OF CURRENT DAY ONLY
 # ==========================================
 
 def detect_liquidity_grab(df):
@@ -205,21 +202,35 @@ def detect_liquidity_grab(df):
     if df is None or len(df) < 2:
         return []
 
+    data = df.copy()
+
+    data["date"] = (
+        data["datetime"].dt.date
+    )
+
     levels = get_previous_day_levels(
-        df
+        data
     )
 
     if levels is None:
         return []
 
-    latest = df.iloc[-1]
-
-    latest_high = float(
-        latest["high"]
+    current_date = (
+        data.iloc[-1]["date"]
     )
 
-    latest_low = float(
-        latest["low"]
+    current_day = data[
+        data["date"]
+        == current_date
+    ].copy()
+
+    if current_day.empty:
+        return []
+
+    latest = current_day.iloc[-1]
+
+    prior_today = (
+        current_day.iloc[:-1]
     )
 
     pdh = float(
@@ -230,9 +241,48 @@ def detect_liquidity_grab(df):
         levels["PDL"]
     )
 
+    latest_high = float(
+        latest["high"]
+    )
+
+    latest_low = float(
+        latest["low"]
+    )
+
+    # Check whether PDH was already
+    # swept earlier today.
+    pdh_already_swept = False
+
+    if not prior_today.empty:
+
+        pdh_already_swept = bool(
+            (
+                prior_today["high"]
+                > pdh
+            ).any()
+        )
+
+    # Check whether PDL was already
+    # swept earlier today.
+    pdl_already_swept = False
+
+    if not prior_today.empty:
+
+        pdl_already_swept = bool(
+            (
+                prior_today["low"]
+                < pdl
+            ).any()
+        )
+
     alerts = []
 
-    if latest_low < pdl:
+    # PDL FIRST SWEEP
+    if (
+        latest_low < pdl
+        and
+        not pdl_already_swept
+    ):
 
         alerts.append({
             "type":
@@ -259,7 +309,12 @@ def detect_liquidity_grab(df):
                 )
         })
 
-    if latest_high > pdh:
+    # PDH FIRST SWEEP
+    if (
+        latest_high > pdh
+        and
+        not pdh_already_swept
+    ):
 
         alerts.append({
             "type":
@@ -290,7 +345,7 @@ def detect_liquidity_grab(df):
 
 
 # ==========================================
-# DH / DL DETECTION
+# CURRENT DAY DH / DL
 # ==========================================
 
 def detect_daily_liquidity_grab(df):
@@ -298,8 +353,10 @@ def detect_daily_liquidity_grab(df):
     if df is None or len(df) < 2:
         return []
 
-    levels = get_prior_current_day_levels(
-        df
+    levels = (
+        get_prior_current_day_levels(
+            df
+        )
     )
 
     if levels is None:
@@ -325,7 +382,7 @@ def detect_daily_liquidity_grab(df):
 
     alerts = []
 
-    # Current Day Low sweep
+    # Prior intraday Low swept
     if latest_low < dl:
 
         alerts.append({
@@ -353,7 +410,7 @@ def detect_daily_liquidity_grab(df):
                 )
         })
 
-    # Current Day High sweep
+    # Prior intraday High swept
     if latest_high > dh:
 
         alerts.append({
@@ -388,14 +445,20 @@ def detect_daily_liquidity_grab(df):
 # TELEGRAM FORMAT
 # ==========================================
 
-def format_alert(symbol, alert):
+def format_alert(
+    symbol,
+    alert
+):
 
     if (
         alert["type"]
         == "BULLISH LIQUIDITY GRAB"
     ):
+
         emoji = "🟢"
+
     else:
+
         emoji = "🔴"
 
     return (
