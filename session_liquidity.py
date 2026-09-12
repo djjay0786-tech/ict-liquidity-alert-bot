@@ -9,19 +9,20 @@ SESSIONS = {
         "start": time(0, 0),
         "end": time(9, 0),
     },
-
     "LONDON": {
         "timezone": "Europe/London",
         "start": time(8, 0),
         "end": time(17, 0),
     },
-
     "NEW YORK": {
         "timezone": "America/New_York",
         "start": time(8, 0),
         "end": time(17, 0),
     },
 }
+
+
+UTC = ZoneInfo("UTC")
 
 
 def prepare_candles(values):
@@ -46,10 +47,9 @@ def prepare_candles(values):
         subset=["datetime", "high", "low"]
     )
 
-    df = df.sort_values("datetime")
-    df = df.reset_index(drop=True)
-
-    return df
+    return df.sort_values(
+        "datetime"
+    ).reset_index(drop=True)
 
 
 def get_session_range(
@@ -60,7 +60,9 @@ def get_session_range(
 
     session = SESSIONS[session_name]
 
-    tz = ZoneInfo(session["timezone"])
+    tz = ZoneInfo(
+        session["timezone"]
+    )
 
     start_local = datetime.combine(
         session_date,
@@ -72,16 +74,12 @@ def get_session_range(
         session["end"]
     ).replace(tzinfo=tz)
 
-    start_utc = start_local.astimezone(
-        ZoneInfo("UTC")
-    )
-
-    end_utc = end_local.astimezone(
-        ZoneInfo("UTC")
-    )
+    start_utc = start_local.astimezone(UTC)
+    end_utc = end_local.astimezone(UTC)
 
     session_df = df[
-        (df["datetime"] >= start_utc) &
+        (df["datetime"] >= start_utc)
+        &
         (df["datetime"] < end_utc)
     ]
 
@@ -91,8 +89,12 @@ def get_session_range(
     return {
         "session": session_name,
         "date": str(session_date),
-        "high": float(session_df["high"].max()),
-        "low": float(session_df["low"].min()),
+        "high": float(
+            session_df["high"].max()
+        ),
+        "low": float(
+            session_df["low"].min()
+        ),
     }
 
 
@@ -104,18 +106,19 @@ def get_previous_session_levels(
 
     session = SESSIONS[session_name]
 
-    tz = ZoneInfo(session["timezone"])
+    tz = ZoneInfo(
+        session["timezone"]
+    )
 
     current_local = current_time.astimezone(tz)
 
     current_date = current_local.date()
 
-    # Check today and previous few days
     for days_back in range(0, 5):
 
         check_date = (
-            current_date -
-            timedelta(days=days_back)
+            current_date
+            - timedelta(days=days_back)
         )
 
         levels = get_session_range(
@@ -131,13 +134,11 @@ def get_previous_session_levels(
                 session["end"]
             ).replace(tzinfo=tz)
 
-            session_end_utc = session_end.astimezone(
-                ZoneInfo("UTC")
+            session_end_utc = (
+                session_end.astimezone(UTC)
             )
 
-            # Session must already be completed
             if session_end_utc < current_time:
-
                 return levels
 
     return None
@@ -157,9 +158,9 @@ def detect_session_liquidity(
 
     alerts = []
 
-    # ==================================================
-    # 1. ASIA LIQUIDITY → USED DURING LONDON
-    # ==================================================
+    # =========================================
+    # LONDON → ASIA LIQUIDITY
+    # =========================================
 
     if current_session == "LONDON":
 
@@ -171,6 +172,7 @@ def detect_session_liquidity(
 
         if asia:
 
+            # Asia Low sweep
             if latest["low"] < asia["low"]:
 
                 alerts.append({
@@ -186,6 +188,7 @@ def detect_session_liquidity(
                     ),
                 })
 
+            # Asia High sweep
             if latest["high"] > asia["high"]:
 
                 alerts.append({
@@ -201,9 +204,9 @@ def detect_session_liquidity(
                     ),
                 )
 
-    # ==================================================
-    # 2. LONDON LIQUIDITY → USED DURING NEW YORK
-    # ==================================================
+    # =========================================
+    # NEW YORK → LONDON LIQUIDITY
+    # =========================================
 
     if current_session == "NEW YORK":
 
@@ -215,6 +218,7 @@ def detect_session_liquidity(
 
         if london:
 
+            # London Low sweep
             if latest["low"] < london["low"]:
 
                 alerts.append({
@@ -230,6 +234,7 @@ def detect_session_liquidity(
                     ),
                 })
 
+            # London High sweep
             if latest["high"] > london["high"]:
 
                 alerts.append({
