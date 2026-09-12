@@ -15,6 +15,7 @@ on:
           - fvg_only
           - ob_fvg_only
           - confluence_only
+          - ranking_only
           - deep
 
 permissions:
@@ -74,9 +75,10 @@ jobs:
             alert_state.py \
             telegram_alert.py \
             confluence.py \
+            ranking.py \
             live_engine.py
 
-          python -c "import live_engine; print('✅ BASIC IMPORT TEST PASSED')"
+          python -c "import live_engine; import ranking; print('✅ BASIC IMPORT TEST PASSED')"
 
       - name: Run Liquidity Only Test
         if: ${{ inputs.test_mode == 'liquidity_only' }}
@@ -97,6 +99,10 @@ jobs:
       - name: Run Confluence Only Test
         if: ${{ inputs.test_mode == 'confluence_only' }}
         run: python test_confluence_only.py
+
+      - name: Run Ranking Only Test
+        if: ${{ inputs.test_mode == 'ranking_only' }}
+        run: python test_ranking_only.py
 
       - name: Run Deep Test
         if: ${{ inputs.test_mode == 'deep' }}
@@ -123,6 +129,8 @@ jobs:
           python test_ob_fvg_only.py
 
           python test_confluence_only.py
+
+          python test_ranking_only.py
 
           if [ -f test_ob_state.py ]; then
             cp ob_state.json ob_state_backup.json || true
