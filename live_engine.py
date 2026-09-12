@@ -29,6 +29,13 @@ from ob_fvg import (
     format_ob_fvg_selection
 )
 
+from ob_tap import detect_first_tap, create_tap_alert
+
+from ob_state import (
+    can_alert_first_tap,
+    confirm_first_tap
+)
+
 from telegram_alert import send_alert
 
 
