@@ -21,38 +21,134 @@ TELEGRAM_URL = (
 )
 
 
+MAX_MESSAGE_LENGTH = 3900
+
+
+def split_message(message):
+
+    if len(message) <= MAX_MESSAGE_LENGTH:
+        return [message]
+
+    parts = []
+
+    current = ""
+
+    for line in message.splitlines(
+        keepends=True
+    ):
+
+        if (
+            len(current)
+            +
+            len(line)
+            >
+            MAX_MESSAGE_LENGTH
+        ):
+
+            if current:
+                parts.append(
+                    current.rstrip()
+                )
+
+            current = line
+
+        else:
+
+            current += line
+
+    if current:
+
+        parts.append(
+            current.rstrip()
+        )
+
+    return parts
+
+
 def send_to_chat(
     chat_id,
     message
 ):
 
     if not chat_id:
-        return None
+        return []
 
-    payload = {
-        "chat_id": chat_id,
-        "text": message
-    }
-
-    response = requests.post(
-        TELEGRAM_URL,
-        json=payload,
-        timeout=15
+    message_parts = split_message(
+        message
     )
 
-    response.raise_for_status()
+    results = []
 
-    data = response.json()
+    total_parts = len(
+        message_parts
+    )
 
-    if not data.get("ok"):
-        raise Exception(
-            data.get(
-                "description",
-                "Telegram API error"
+    for index, part in enumerate(
+        message_parts,
+        start=1
+    ):
+
+        if total_parts > 1:
+
+            text = (
+                f"📄 Part "
+                f"{index}/{total_parts}\n\n"
+                f"{part}"
             )
+
+        else:
+
+            text = part
+
+        payload = {
+            "chat_id": chat_id,
+            "text": text
+        }
+
+        response = requests.post(
+            TELEGRAM_URL,
+            json=payload,
+            timeout=20
         )
 
-    return data
+        try:
+
+            data = response.json()
+
+        except Exception:
+
+            data = {}
+
+        if not response.ok:
+
+            description = data.get(
+                "description",
+                response.text
+            )
+
+            raise Exception(
+                f"Telegram error "
+                f"{response.status_code}: "
+                f"{description}"
+            )
+
+        if not data.get(
+            "ok",
+            False
+        ):
+
+            raise Exception(
+                data.get(
+                    "description",
+                    "Telegram API error"
+                )
+            )
+
+        results.append(
+            data
+        )
+
+    return results
 
 
 def send_telegram_message(
@@ -60,56 +156,52 @@ def send_telegram_message(
 ):
 
     if not BOT_TOKEN:
+
         raise Exception(
             "Telegram bot token "
             "not configured"
         )
 
+    chat_ids = []
+
+    if PERSONAL_CHAT_ID:
+
+        chat_ids.append(
+            PERSONAL_CHAT_ID
+        )
+
     if (
-        not PERSONAL_CHAT_ID
+        GROUP_CHAT_ID
         and
-        not GROUP_CHAT_ID
+        GROUP_CHAT_ID
+        not in chat_ids
     ):
+
+        chat_ids.append(
+            GROUP_CHAT_ID
+        )
+
+    if not chat_ids:
+
         raise Exception(
             "No Telegram chat IDs "
             "configured"
         )
 
-    results = []
+    all_results = []
 
-    if PERSONAL_CHAT_ID:
+    for chat_id in chat_ids:
 
-        personal_result = (
-            send_to_chat(
-                PERSONAL_CHAT_ID,
-                message
-            )
+        results = send_to_chat(
+            chat_id,
+            message
         )
 
-        results.append({
-            "destination":
-                "personal",
-            "result":
-                personal_result
-        })
-
-    if GROUP_CHAT_ID:
-
-        group_result = (
-            send_to_chat(
-                GROUP_CHAT_ID,
-                message
-            )
+        all_results.extend(
+            results
         )
 
-        results.append({
-            "destination":
-                "group",
-            "result":
-                group_result
-        })
-
-    return results
+    return all_results
 
 
 def send_alert(
