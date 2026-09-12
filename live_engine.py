@@ -12,6 +12,7 @@ from dxy_data import (
 from liquidity import (
     prepare_candles,
     detect_liquidity_grab,
+    detect_daily_liquidity_grab,
     format_alert
 )
 
@@ -236,6 +237,10 @@ def send_once(
     return False
 
 
+# ==========================================
+# SESSION OPEN / CLOSE
+# ==========================================
+
 def check_session_open_close():
 
     current_utc = datetime.now(
@@ -305,6 +310,11 @@ def check_session_open_close():
         )
 
 
+# ==========================================
+# PDH / PDL
+# H1 ONLY
+# ==========================================
+
 def check_liquidity(
     symbol,
     timeframe,
@@ -317,6 +327,15 @@ def check_liquidity(
     alerts = detect_liquidity_grab(
         df
     )
+
+    if not alerts:
+
+        print(
+            f"💧 No PDH/PDL sweep | "
+            f"{symbol}"
+        )
+
+        return
 
     for alert in alerts:
 
@@ -331,20 +350,21 @@ def check_liquidity(
         ):
 
             print(
-                f"🕰️ Old liquidity ignored | "
-                f"{symbol} | {event_time}"
+                f"🕰️ Old PDH/PDL "
+                f"ignored | "
+                f"{symbol}"
             )
 
             continue
 
         alert_id = make_alert_id(
-            "LIQUIDITY",
+            "PDH_PDL",
             symbol,
             timeframe,
             event_time,
             (
-                f"{alert.get('type', '')}|"
-                f"{alert.get('level', '')}"
+                f"{alert.get('level', '')}|"
+                f"{alert.get('level_date', '')}"
             )
         )
 
@@ -358,13 +378,105 @@ def check_liquidity(
             f"{timeframe}"
         )
 
+        print(
+            "\n🚨 PDH/PDL "
+            "LIQUIDITY"
+        )
+
         send_once(
             alert_id,
             message,
-            "Liquidity",
+            "PDH/PDL",
             alert
         )
 
+
+# ==========================================
+# DH / DL
+# H1 ONLY
+# ==========================================
+
+def check_daily_liquidity(
+    symbol,
+    timeframe,
+    df
+):
+
+    if timeframe != "H1":
+        return
+
+    alerts = (
+        detect_daily_liquidity_grab(
+            df
+        )
+    )
+
+    if not alerts:
+
+        print(
+            f"💧 No DH/DL sweep | "
+            f"{symbol}"
+        )
+
+        return
+
+    for alert in alerts:
+
+        event_time = alert.get(
+            "time",
+            ""
+        )
+
+        if not is_fresh(
+            event_time,
+            timeframe
+        ):
+
+            print(
+                f"🕰️ Old DH/DL "
+                f"ignored | "
+                f"{symbol}"
+            )
+
+            continue
+
+        alert_id = make_alert_id(
+            "DH_DL",
+            symbol,
+            timeframe,
+            event_time,
+            (
+                f"{alert.get('level', '')}|"
+                f"{alert.get('level_date', '')}"
+            )
+        )
+
+        message = format_alert(
+            symbol,
+            alert
+        )
+
+        message += (
+            f"\nTimeframe: "
+            f"{timeframe}"
+        )
+
+        print(
+            "\n🚨 DH/DL "
+            "LIQUIDITY"
+        )
+
+        send_once(
+            alert_id,
+            message,
+            "DH/DL",
+            alert
+        )
+
+
+# ==========================================
+# SESSION LIQUIDITY
+# ==========================================
 
 def check_session_liquidity(
     symbol,
@@ -387,6 +499,9 @@ def check_session_liquidity(
             )
         )
 
+        if not alerts:
+            continue
+
         for alert in alerts:
 
             event_time = alert.get(
@@ -402,8 +517,7 @@ def check_session_liquidity(
                 print(
                     f"🕰️ Old session "
                     f"liquidity ignored | "
-                    f"{symbol} | "
-                    f"{event_time}"
+                    f"{symbol}"
                 )
 
                 continue
@@ -432,6 +546,11 @@ def check_session_liquidity(
                 f"{timeframe}"
             )
 
+            print(
+                "\n🚨 SESSION "
+                "LIQUIDITY"
+            )
+
             send_once(
                 alert_id,
                 message,
@@ -439,6 +558,10 @@ def check_session_liquidity(
                 alert
             )
 
+
+# ==========================================
+# CRT
+# ==========================================
 
 def check_crt(
     symbol,
@@ -505,6 +628,10 @@ def check_crt(
         )
 
 
+# ==========================================
+# FVG
+# ==========================================
+
 def check_fvg(
     symbol,
     timeframe,
@@ -533,8 +660,7 @@ def check_fvg(
         print(
             f"🕰️ Old FVG ignored | "
             f"{symbol} | "
-            f"{timeframe} | "
-            f"{fvg_time}"
+            f"{timeframe}"
         )
 
         return
@@ -550,12 +676,10 @@ def check_fvg(
         )
     )
 
-    message = (
-        format_fvg_alert(
-            symbol,
-            timeframe,
-            latest_fvg
-        )
+    message = format_fvg_alert(
+        symbol,
+        timeframe,
+        latest_fvg
     )
 
     send_once(
@@ -565,6 +689,10 @@ def check_fvg(
         latest_fvg
     )
 
+
+# ==========================================
+# OB + FVG
+# ==========================================
 
 def check_ob_fvg(
     symbol,
@@ -594,7 +722,7 @@ def check_ob_fvg(
 
         print(
             f"🕰️ Old OB+FVG "
-            f"setup ignored | "
+            f"ignored | "
             f"{symbol} | "
             f"{timeframe}"
         )
@@ -630,6 +758,10 @@ def check_ob_fvg(
         }
     )
 
+
+# ==========================================
+# OB FIRST TAP
+# ==========================================
 
 def check_ob_first_tap(
     symbol,
@@ -698,6 +830,10 @@ def check_ob_first_tap(
         )
 
 
+# ==========================================
+# MAIN ENGINE
+# ==========================================
+
 def run_engine():
 
     print(
@@ -761,6 +897,12 @@ def run_engine():
                     df
                 )
 
+                check_daily_liquidity(
+                    symbol,
+                    timeframe,
+                    df
+                )
+
                 check_session_liquidity(
                     symbol,
                     timeframe,
@@ -803,4 +945,5 @@ def run_engine():
 
 
 if __name__ == "__main__":
+
     run_engine()
