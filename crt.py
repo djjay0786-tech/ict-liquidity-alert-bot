@@ -2,6 +2,7 @@ import pandas as pd
 
 
 def prepare_candles(values):
+
     df = pd.DataFrame(values)
 
     if df.empty:
@@ -12,7 +13,13 @@ def prepare_candles(values):
         utc=True
     )
 
-    for column in ["open", "high", "low", "close"]:
+    for column in [
+        "open",
+        "high",
+        "low",
+        "close"
+    ]:
+
         df[column] = pd.to_numeric(
             df[column],
             errors="coerce"
@@ -28,19 +35,39 @@ def prepare_candles(values):
         ]
     )
 
-    df = df.sort_values("datetime")
-    df = df.reset_index(drop=True)
+    df = df.sort_values(
+        "datetime"
+    )
+
+    df = df.reset_index(
+        drop=True
+    )
 
     return df
 
 
 def detect_crt(df):
 
-    if len(df) < 3:
+    """
+    CRT Logic
+
+    Bullish CRT:
+    1. Candle 1 sweeps previous candle LOW.
+    2. Candle 2 closes above Candle 1 HIGH.
+    3. Entry reference = Candle 3 OPEN.
+
+    Bearish CRT:
+    1. Candle 1 sweeps previous candle HIGH.
+    2. Candle 2 closes below Candle 1 LOW.
+    3. Entry reference = Candle 3 OPEN.
+    """
+
+    if df is None or len(df) < 4:
         return []
 
     alerts = []
 
+    previous = df.iloc[-4]
     first = df.iloc[-3]
     second = df.iloc[-2]
     third = df.iloc[-1]
@@ -49,33 +76,34 @@ def detect_crt(df):
     # BULLISH CRT
     # ==========================================
 
-    # First candle LOW is swept
-    # using candle immediately before it
     bullish_sweep = (
-        first["low"] < df.iloc[-4]["low"]
-        if len(df) >= 4
-        else False
+        float(first["low"])
+        <
+        float(previous["low"])
     )
 
-    # Second candle BODY closes above
-    # First candle HIGH
-    bullish_confirmation = (
-        second["close"] > first["high"]
+    bullish_close = (
+        float(second["close"])
+        >
+        float(first["high"])
     )
 
-    if bullish_sweep and bullish_confirmation:
+    if (
+        bullish_sweep
+        and bullish_close
+    ):
 
         alerts.append({
             "type": "BULLISH CRT",
 
+            "liquidity_side":
+                "LOW SWEEP",
+
+            "previous_low":
+                float(previous["low"]),
+
             "first_candle_time":
                 str(first["datetime"]),
-
-            "second_candle_time":
-                str(second["datetime"]),
-
-            "entry_time":
-                str(third["datetime"]),
 
             "first_high":
                 float(first["high"]),
@@ -83,8 +111,14 @@ def detect_crt(df):
             "first_low":
                 float(first["low"]),
 
+            "second_candle_time":
+                str(second["datetime"]),
+
             "confirmation_close":
                 float(second["close"]),
+
+            "entry_time":
+                str(third["datetime"]),
 
             "entry_price":
                 float(third["open"])
@@ -94,33 +128,34 @@ def detect_crt(df):
     # BEARISH CRT
     # ==========================================
 
-    # First candle HIGH is swept
-    # using candle immediately before it
     bearish_sweep = (
-        first["high"] > df.iloc[-4]["high"]
-        if len(df) >= 4
-        else False
+        float(first["high"])
+        >
+        float(previous["high"])
     )
 
-    # Second candle BODY closes below
-    # First candle LOW
-    bearish_confirmation = (
-        second["close"] < first["low"]
+    bearish_close = (
+        float(second["close"])
+        <
+        float(first["low"])
     )
 
-    if bearish_sweep and bearish_confirmation:
+    if (
+        bearish_sweep
+        and bearish_close
+    ):
 
         alerts.append({
             "type": "BEARISH CRT",
 
+            "liquidity_side":
+                "HIGH SWEEP",
+
+            "previous_high":
+                float(previous["high"]),
+
             "first_candle_time":
                 str(first["datetime"]),
-
-            "second_candle_time":
-                str(second["datetime"]),
-
-            "entry_time":
-                str(third["datetime"]),
 
             "first_high":
                 float(first["high"]),
@@ -128,8 +163,14 @@ def detect_crt(df):
             "first_low":
                 float(first["low"]),
 
+            "second_candle_time":
+                str(second["datetime"]),
+
             "confirmation_close":
                 float(second["close"]),
+
+            "entry_time":
+                str(third["datetime"]),
 
             "entry_price":
                 float(third["open"])
@@ -138,32 +179,42 @@ def detect_crt(df):
     return alerts
 
 
-def format_crt_alert(symbol, timeframe, alert):
+def format_crt_alert(
+    symbol,
+    timeframe,
+    alert
+):
 
-    if alert["type"] == "BULLISH CRT":
+    if (
+        alert["type"]
+        == "BULLISH CRT"
+    ):
+
         emoji = "🟢"
+
     else:
+
         emoji = "🔴"
 
     message = (
         f"{emoji} {alert['type']}\n\n"
         f"Symbol: {symbol}\n"
         f"Timeframe: {timeframe}\n\n"
-
+        f"Liquidity: "
+        f"{alert['liquidity_side']}\n\n"
         f"First Candle High: "
         f"{alert['first_high']:.5f}\n"
-
         f"First Candle Low: "
         f"{alert['first_low']:.5f}\n\n"
-
         f"Confirmation Close: "
-        f"{alert['confirmation_close']:.5f}\n"
-
-        f"Entry Reference: "
+        f"{alert['confirmation_close']:.5f}\n\n"
+        f"Entry Reference "
+        f"(3rd Candle Open): "
         f"{alert['entry_price']:.5f}\n\n"
-
         f"Confirmation Time: "
-        f"{alert['second_candle_time']}"
+        f"{alert['second_candle_time']}\n"
+        f"Entry Time: "
+        f"{alert['entry_time']}"
     )
 
     return message
