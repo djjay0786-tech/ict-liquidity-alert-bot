@@ -59,6 +59,13 @@ from alert_state import (
 
 from telegram_alert import send_alert
 
+from confluence import (
+    build_confluence,
+    format_confluence_alert,
+    get_direction_from_liquidity,
+    get_direction_from_crt
+)
+
 
 SYMBOLS = [
     "EUR/USD",
@@ -840,6 +847,304 @@ def check_ob_first_tap(
 
 
 # ==========================================
+# HIGH CONFLUENCE
+# H1 ONLY
+# ==========================================
+
+def check_high_confluence(
+    symbol,
+    timeframe,
+    df
+):
+
+    if timeframe != "H1":
+        return
+
+    setup = select_ob_near_fvg(
+        df
+    )
+
+    if setup is None:
+
+        print(
+            f"🧩 No OB+FVG for "
+            f"confluence | {symbol}"
+        )
+
+        return
+
+    ob = setup["ob"]
+    fvg = setup["fvg"]
+
+    fvg_time = fvg.get(
+        "time",
+        ""
+    )
+
+    if not is_fresh(
+        fvg_time,
+        timeframe
+    ):
+
+        print(
+            f"🕰️ Confluence FVG old | "
+            f"{symbol}"
+        )
+
+        return
+
+    if not is_latest_candle_first_tap(
+        df,
+        ob
+    ):
+
+        print(
+            f"🧩 No current OB first tap | "
+            f"{symbol}"
+        )
+
+        return
+
+    # --------------------------------------
+    # COLLECT FRESH LIQUIDITY EVENTS
+    # --------------------------------------
+
+    liquidity_alerts = []
+
+    try:
+
+        pdh_pdl_alerts = (
+            detect_liquidity_grab(
+                df
+            )
+            or []
+        )
+
+        liquidity_alerts.extend(
+            pdh_pdl_alerts
+        )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ Confluence PDH/PDL "
+            f"error: {e}"
+        )
+
+    try:
+
+        daily_alerts = (
+            detect_daily_liquidity_grab(
+                df
+            )
+            or []
+        )
+
+        liquidity_alerts.extend(
+            daily_alerts
+        )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ Confluence DH/DL "
+            f"error: {e}"
+        )
+
+    for session in [
+        "ASIA",
+        "LONDON",
+        "NEW YORK"
+    ]:
+
+        try:
+
+            session_alerts = (
+                detect_session_liquidity(
+                    df,
+                    session
+                )
+                or []
+            )
+
+            liquidity_alerts.extend(
+                session_alerts
+            )
+
+        except Exception as e:
+
+            print(
+                f"⚠️ Confluence {session} "
+                f"liquidity error: {e}"
+            )
+
+    fresh_liquidity = []
+
+    for alert in liquidity_alerts:
+
+        event_time = alert.get(
+            "time",
+            ""
+        )
+
+        if not is_fresh(
+            event_time,
+            timeframe
+        ):
+            continue
+
+        direction = (
+            get_direction_from_liquidity(
+                alert
+            )
+        )
+
+        if direction is None:
+            continue
+
+        fresh_liquidity.append(
+            alert
+        )
+
+    if not fresh_liquidity:
+
+        print(
+            f"🧩 No fresh liquidity "
+            f"for confluence | {symbol}"
+        )
+
+        return
+
+    # --------------------------------------
+    # COLLECT FRESH CRT EVENTS
+    # --------------------------------------
+
+    crt_alerts = (
+        detect_crt(
+            df
+        )
+        or []
+    )
+
+    fresh_crt = []
+
+    for alert in crt_alerts:
+
+        confirmation_time = (
+            alert.get(
+                "second_candle_time",
+                ""
+            )
+        )
+
+        if not is_fresh(
+            confirmation_time,
+            timeframe
+        ):
+            continue
+
+        direction = (
+            get_direction_from_crt(
+                alert
+            )
+        )
+
+        if direction is None:
+            continue
+
+        fresh_crt.append(
+            alert
+        )
+
+    if not fresh_crt:
+
+        print(
+            f"🧩 No fresh CRT "
+            f"for confluence | {symbol}"
+        )
+
+        return
+
+    # --------------------------------------
+    # FIND SAME-DIRECTION COMBINATION
+    # --------------------------------------
+
+    final_setup = None
+
+    for liquidity_alert in reversed(
+        fresh_liquidity
+    ):
+
+        for crt_alert in reversed(
+            fresh_crt
+        ):
+
+            candidate = build_confluence(
+                symbol=symbol,
+                timeframe=timeframe,
+                liquidity_alert=liquidity_alert,
+                crt_alert=crt_alert,
+                fvg=fvg,
+                ob=ob,
+                ob_first_tap=True
+            )
+
+            if candidate is not None:
+
+                final_setup = candidate
+                break
+
+        if final_setup is not None:
+            break
+
+    if final_setup is None:
+
+        print(
+            f"🧩 Confluence directions "
+            f"do not match | {symbol}"
+        )
+
+        return
+
+    candle = df.iloc[-1]
+
+    candle_time = str(
+        candle["datetime"]
+    )
+
+    alert_id = make_alert_id(
+        "HIGH_CONFLUENCE",
+        symbol,
+        timeframe,
+        candle_time,
+        (
+            f"{final_setup['direction']}|"
+            f"{ob.get('time', '')}|"
+            f"{fvg.get('time', '')}"
+        )
+    )
+
+    message = (
+        format_confluence_alert(
+            final_setup
+        )
+    )
+
+    print(
+        "\n🔥 HIGH CONFLUENCE "
+        f"{final_setup['trade']} | "
+        f"{symbol}"
+    )
+
+    send_once(
+        alert_id,
+        message,
+        "High Confluence",
+        final_setup
+    )
+
+
+# ==========================================
 # MAIN ENGINE
 # ==========================================
 
@@ -931,6 +1236,14 @@ def run_engine():
                 )
 
                 check_ob_fvg(
+                    symbol,
+                    timeframe,
+                    df
+                )
+
+                # Confluence BEFORE OB state
+                # is confirmed as tapped.
+                check_high_confluence(
                     symbol,
                     timeframe,
                     df
