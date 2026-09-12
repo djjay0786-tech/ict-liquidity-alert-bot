@@ -11,17 +11,14 @@ def load_state():
         return {}
 
     try:
-
         with open(
             STATE_FILE,
             "r",
             encoding="utf-8"
         ) as file:
-
             return json.load(file)
 
     except Exception:
-
         return {}
 
 
@@ -32,12 +29,27 @@ def save_state(state):
         "w",
         encoding="utf-8"
     ) as file:
-
         json.dump(
             state,
             file,
             indent=2
         )
+
+
+# Compatibility function
+# Existing test_ob_state.py uses this.
+def get_ob_id(
+    symbol,
+    timeframe,
+    ob
+):
+
+    return (
+        f"{symbol}_"
+        f"{timeframe}_"
+        f"{ob['type']}_"
+        f"{ob['time']}"
+    )
 
 
 def get_ob_key(
@@ -64,17 +76,18 @@ def register_current_ob(
         timeframe
     )
 
-    current = state.get(key)
-
     new_ob_id = (
         f"{ob['type']}_"
         f"{ob['time']}"
     )
 
-    # New OB → replace old OB
-    if current is None or current.get(
-        "ob_id"
-    ) != new_ob_id:
+    current = state.get(key)
+
+    # New OB replaces old OB
+    if (
+        current is None
+        or current.get("ob_id") != new_ob_id
+    ):
 
         state[key] = {
             "ob_id": new_ob_id,
