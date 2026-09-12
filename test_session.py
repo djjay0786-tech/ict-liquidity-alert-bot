@@ -1,8 +1,8 @@
 from market_data import get_candles
+
 from session_liquidity import (
     prepare_candles,
-    calculate_session_levels,
-    detect_session_liquidity_grab,
+    detect_session_liquidity,
     format_session_alert
 )
 
@@ -16,66 +16,77 @@ symbols = [
 for symbol in symbols:
 
     print("\n" + "=" * 60)
-    print(f"SESSION LIQUIDITY TEST: {symbol}")
+    print(f"SESSION LIQUIDITY: {symbol}")
     print("=" * 60)
 
     data = get_candles(
         symbol,
         interval="1h",
-        outputsize=200
+        outputsize=500
     )
 
     if "values" not in data:
+
         print("❌ No market data")
         continue
 
-    df = prepare_candles(data["values"])
+    df = prepare_candles(
+        data["values"]
+    )
 
-    for session in [
-        "ASIA",
-        "LONDON",
-        "NEW YORK"
-    ]:
+    # ---------------------------------------
+    # LONDON checks ASIA liquidity
+    # ---------------------------------------
 
-        print(f"\n--- {session} ---")
+    print("\n--- LONDON → ASIA LIQUIDITY ---")
 
-        levels = calculate_session_levels(
-            df,
-            session
+    alerts = detect_session_liquidity(
+        df,
+        "LONDON"
+    )
+
+    if alerts:
+
+        for alert in alerts:
+
+            print(
+                format_session_alert(
+                    symbol,
+                    alert
+                )
+            )
+
+    else:
+
+        print(
+            "No Asia liquidity grab."
         )
 
-        if levels:
+
+    # ---------------------------------------
+    # NEW YORK checks LONDON liquidity
+    # ---------------------------------------
+
+    print("\n--- NEW YORK → LONDON LIQUIDITY ---")
+
+    alerts = detect_session_liquidity(
+        df,
+        "NEW YORK"
+    )
+
+    if alerts:
+
+        for alert in alerts:
 
             print(
-                f"High: {levels['high']}"
-            )
-
-            print(
-                f"Low: {levels['low']}"
-            )
-
-            alerts = detect_session_liquidity_grab(
-                df,
-                session
-            )
-
-            if alerts:
-
-                for alert in alerts:
-                    print(
-                        format_session_alert(
-                            symbol,
-                            alert
-                        )
-                    )
-
-            else:
-                print(
-                    "No liquidity grab detected."
+                format_session_alert(
+                    symbol,
+                    alert
                 )
-
-        else:
-
-            print(
-                "Session data not available."
             )
+
+    else:
+
+        print(
+            "No London liquidity grab."
+        )
