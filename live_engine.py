@@ -90,10 +90,6 @@ TIMEFRAMES = {
 UTC = ZoneInfo("UTC")
 
 
-# ==========================================
-# FRESHNESS
-# ==========================================
-
 def is_fresh(
     event_time,
     timeframe
@@ -105,8 +101,10 @@ def is_fresh(
     try:
 
         event_dt = datetime.fromisoformat(
-            str(event_time)
-            .replace("Z", "+00:00")
+            str(event_time).replace(
+                "Z",
+                "+00:00"
+            )
         )
 
         if event_dt.tzinfo is None:
@@ -142,10 +140,6 @@ def is_fresh(
     )
 
 
-# ==========================================
-# MARKET DATA
-# ==========================================
-
 def get_market_data(
     symbol,
     timeframe
@@ -179,10 +173,6 @@ def get_market_data(
         data["values"]
     )
 
-
-# ==========================================
-# TELEGRAM
-# ==========================================
 
 def send_message(
     message,
@@ -223,8 +213,8 @@ def send_once(
     ):
 
         print(
-            f"🚫 Duplicate {label} "
-            f"alert blocked"
+            f"🚫 Duplicate "
+            f"{label} alert blocked"
         )
 
         return False
@@ -245,10 +235,6 @@ def send_once(
 
     return False
 
-
-# ==========================================
-# SESSION OPEN / CLOSE
-# ==========================================
 
 def check_session_open_close():
 
@@ -271,14 +257,32 @@ def check_session_open_close():
 
     for event in events:
 
-        session = event["session"]
-        event_type = event["event"]
+        session = event[
+            "session"
+        ]
+
+        event_type = event[
+            "event"
+        ]
+
+        event_date = event[
+            "event_date"
+        ]
+
+        scheduled_time = event[
+            "scheduled_time"
+        ]
+
+        stable_event_time = (
+            f"{event_date}|"
+            f"{scheduled_time}"
+        )
 
         alert_id = make_alert_id(
             "SESSION_EVENT",
             session,
             "GLOBAL",
-            event["local_time"],
+            stable_event_time,
             event_type
         )
 
@@ -288,6 +292,11 @@ def check_session_open_close():
             )
         )
 
+        print(
+            f"\n🚨 {session} "
+            f"SESSION {event_type}"
+        )
+
         send_once(
             alert_id,
             message,
@@ -295,11 +304,6 @@ def check_session_open_close():
             event
         )
 
-
-# ==========================================
-# PDH / PDL LIQUIDITY
-# H1 ONLY
-# ==========================================
 
 def check_liquidity(
     symbol,
@@ -361,11 +365,6 @@ def check_liquidity(
             alert
         )
 
-
-# ==========================================
-# SESSION LIQUIDITY
-# H1 ONLY
-# ==========================================
 
 def check_session_liquidity(
     symbol,
@@ -441,11 +440,6 @@ def check_session_liquidity(
             )
 
 
-# ==========================================
-# CRT
-# H1 + H4 ONLY
-# ==========================================
-
 def check_crt(
     symbol,
     timeframe,
@@ -511,11 +505,6 @@ def check_crt(
         )
 
 
-# ==========================================
-# VALID FVG
-# H1 + H4 + DAILY
-# ==========================================
-
 def check_fvg(
     symbol,
     timeframe,
@@ -561,10 +550,12 @@ def check_fvg(
         )
     )
 
-    message = format_fvg_alert(
-        symbol,
-        timeframe,
-        latest_fvg
+    message = (
+        format_fvg_alert(
+            symbol,
+            timeframe,
+            latest_fvg
+        )
     )
 
     send_once(
@@ -574,14 +565,6 @@ def check_fvg(
         latest_fvg
     )
 
-
-# ==========================================
-# OB + FVG
-# H1 + H4 + DAILY
-#
-# OB may be older.
-# FVG must be fresh.
-# ==========================================
 
 def check_ob_fvg(
     symbol,
@@ -647,14 +630,6 @@ def check_ob_fvg(
         }
     )
 
-
-# ==========================================
-# OB FIRST TAP
-#
-# This is event-based.
-# The latest candle itself must be the
-# first candle touching the OB.
-# ==========================================
 
 def check_ob_first_tap(
     symbol,
@@ -723,10 +698,6 @@ def check_ob_first_tap(
         )
 
 
-# ==========================================
-# MAIN ENGINE
-# ==========================================
-
 def run_engine():
 
     print(
@@ -748,9 +719,17 @@ def run_engine():
         for timeframe in TIMEFRAMES:
 
             print(
-                f"\nChecking "
+                "\n" + "-" * 60
+            )
+
+            print(
+                f"Checking "
                 f"{symbol} | "
                 f"{timeframe}"
+            )
+
+            print(
+                "-" * 60
             )
 
             try:
@@ -824,5 +803,4 @@ def run_engine():
 
 
 if __name__ == "__main__":
-
     run_engine()
