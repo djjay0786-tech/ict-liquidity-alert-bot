@@ -24,6 +24,11 @@ from fvg import (
     format_fvg_alert
 )
 
+from ob_fvg import (
+    select_ob_near_fvg,
+    format_ob_fvg_selection
+)
+
 from telegram_alert import send_alert
 
 
@@ -64,6 +69,23 @@ def get_market_data(symbol, timeframe):
     )
 
 
+def send_message(message, label):
+
+    try:
+
+        send_alert(message)
+
+        print(
+            f"📲 Telegram {label} alert sent"
+        )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ Telegram error: {e}"
+        )
+
+
 def send_liquidity_alert(
     symbol,
     timeframe,
@@ -79,12 +101,10 @@ def send_liquidity_alert(
         f"\nTimeframe: {timeframe}"
     )
 
-    try:
-        send_alert(message)
-        print("📲 Telegram liquidity alert sent")
-
-    except Exception as e:
-        print(f"⚠️ Telegram error: {e}")
+    send_message(
+        message,
+        "liquidity"
+    )
 
 
 def send_session_alert(
@@ -102,12 +122,10 @@ def send_session_alert(
         f"\nTimeframe: {timeframe}"
     )
 
-    try:
-        send_alert(message)
-        print("📲 Telegram session alert sent")
-
-    except Exception as e:
-        print(f"⚠️ Telegram error: {e}")
+    send_message(
+        message,
+        "session liquidity"
+    )
 
 
 def send_crt_alert(
@@ -122,12 +140,10 @@ def send_crt_alert(
         alert
     )
 
-    try:
-        send_alert(message)
-        print("📲 Telegram CRT alert sent")
-
-    except Exception as e:
-        print(f"⚠️ Telegram error: {e}")
+    send_message(
+        message,
+        "CRT"
+    )
 
 
 def send_fvg_alert(
@@ -142,12 +158,28 @@ def send_fvg_alert(
         fvg
     )
 
-    try:
-        send_alert(message)
-        print("📲 Telegram FVG alert sent")
+    send_message(
+        message,
+        "FVG"
+    )
 
-    except Exception as e:
-        print(f"⚠️ Telegram error: {e}")
+
+def send_ob_fvg_alert(
+    symbol,
+    timeframe,
+    setup
+):
+
+    message = format_ob_fvg_selection(
+        symbol,
+        timeframe,
+        setup
+    )
+
+    send_message(
+        message,
+        "OB + FVG"
+    )
 
 
 def check_liquidity(
@@ -169,7 +201,9 @@ def check_liquidity(
 
     for alert in alerts:
 
-        print("\n🚨 LIQUIDITY GRAB")
+        print(
+            "\n🚨 LIQUIDITY GRAB"
+        )
 
         send_liquidity_alert(
             symbol,
@@ -257,29 +291,68 @@ def check_fvg(
 
         return
 
-    # Latest FVG
     latest_fvg = fvgs[-1]
 
     print(
         "\n🚨 FVG DETECTED"
     )
 
-    print(
-        f"Type: {latest_fvg['type']}"
-    )
-
-    print(
-        f"Top: {latest_fvg['top']}"
-    )
-
-    print(
-        f"Bottom: {latest_fvg['bottom']}"
-    )
-
     send_fvg_alert(
         symbol,
         timeframe,
         latest_fvg
+    )
+
+
+def check_ob_fvg(
+    symbol,
+    timeframe,
+    df
+):
+
+    setup = select_ob_near_fvg(df)
+
+    if setup is None:
+
+        print(
+            f"📦 No OB + FVG setup | "
+            f"{symbol} | {timeframe}"
+        )
+
+        return
+
+    print(
+        "\n🚨 OB + FVG SETUP"
+    )
+
+    ob = setup["ob"]
+    fvg = setup["fvg"]
+
+    print(
+        f"OB: {ob['type']}"
+    )
+
+    print(
+        f"OB High: {ob['high']}"
+    )
+
+    print(
+        f"OB Low: {ob['low']}"
+    )
+
+    print(
+        f"FVG: {fvg['type']}"
+    )
+
+    print(
+        f"Distance: "
+        f"{setup['distance']}"
+    )
+
+    send_ob_fvg_alert(
+        symbol,
+        timeframe,
+        setup
     )
 
 
@@ -341,6 +414,13 @@ def run_engine():
 
                 # 4️⃣ FVG
                 check_fvg(
+                    symbol,
+                    timeframe,
+                    df
+                )
+
+                # 5️⃣ OB + FVG
+                check_ob_fvg(
                     symbol,
                     timeframe,
                     df
