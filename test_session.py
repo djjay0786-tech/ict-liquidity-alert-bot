@@ -1,10 +1,11 @@
 from market_data import get_candles
-
 from session_liquidity import (
     prepare_candles,
     detect_session_liquidity,
     format_session_alert
 )
+
+import time
 
 
 symbols = [
@@ -19,74 +20,84 @@ for symbol in symbols:
     print(f"SESSION LIQUIDITY: {symbol}")
     print("=" * 60)
 
-    data = get_candles(
-        symbol,
-        interval="1h",
-        outputsize=500
-    )
+    try:
 
-    if "values" not in data:
-
-        print("❌ No market data")
-        continue
-
-    df = prepare_candles(
-        data["values"]
-    )
-
-    # ---------------------------------------
-    # LONDON checks ASIA liquidity
-    # ---------------------------------------
-
-    print("\n--- LONDON → ASIA LIQUIDITY ---")
-
-    alerts = detect_session_liquidity(
-        df,
-        "LONDON"
-    )
-
-    if alerts:
-
-        for alert in alerts:
-
-            print(
-                format_session_alert(
-                    symbol,
-                    alert
-                )
-            )
-
-    else:
-
-        print(
-            "No Asia liquidity grab."
+        data = get_candles(
+            symbol,
+            interval="1h",
+            outputsize=500
         )
 
+        if "values" not in data:
 
-    # ---------------------------------------
-    # NEW YORK checks LONDON liquidity
-    # ---------------------------------------
+            print("⚠️ No market data")
+            print(data)
+            continue
 
-    print("\n--- NEW YORK → LONDON LIQUIDITY ---")
-
-    alerts = detect_session_liquidity(
-        df,
-        "NEW YORK"
-    )
-
-    if alerts:
-
-        for alert in alerts:
-
-            print(
-                format_session_alert(
-                    symbol,
-                    alert
-                )
-            )
-
-    else:
+        df = prepare_candles(
+            data["values"]
+        )
 
         print(
-            "No London liquidity grab."
+            "\n--- LONDON → ASIA LIQUIDITY ---"
         )
+
+        alerts = detect_session_liquidity(
+            df,
+            "LONDON"
+        )
+
+        if alerts:
+
+            for alert in alerts:
+
+                print(
+                    format_session_alert(
+                        symbol,
+                        alert
+                    )
+                )
+
+        else:
+
+            print(
+                "No Asia liquidity grab."
+            )
+
+        print(
+            "\n--- NEW YORK → LONDON LIQUIDITY ---"
+        )
+
+        alerts = detect_session_liquidity(
+            df,
+            "NEW YORK"
+        )
+
+        if alerts:
+
+            for alert in alerts:
+
+                print(
+                    format_session_alert(
+                        symbol,
+                        alert
+                    )
+                )
+
+        else:
+
+            print(
+                "No London liquidity grab."
+            )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ {symbol} skipped"
+        )
+
+        print(
+            f"Reason: {e}"
+        )
+
+    time.sleep(8)
