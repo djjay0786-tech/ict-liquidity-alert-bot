@@ -1,4 +1,6 @@
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from market_data import get_candles
 from dxy_data import get_dxy_candles, prepare_dxy_candles
@@ -12,6 +14,11 @@ from liquidity import (
 from session_liquidity import (
     detect_session_liquidity,
     format_session_alert
+)
+
+from session_alerts import (
+    get_session_events,
+    format_session_event
 )
 
 from crt import (
@@ -56,6 +63,9 @@ TIMEFRAMES = [
 ]
 
 
+UTC = ZoneInfo("UTC")
+
+
 def get_market_data(symbol, timeframe):
 
     if symbol == "DXY":
@@ -95,6 +105,39 @@ def send_message(message, label):
 
         print(
             f"⚠️ Telegram error: {e}"
+        )
+
+
+def check_session_open_close():
+
+    current_utc = datetime.now(UTC)
+
+    events = get_session_events(
+        current_utc
+    )
+
+    if not events:
+
+        print(
+            "🕒 No session open/close event"
+        )
+
+        return
+
+    for event in events:
+
+        print(
+            f"\n🚨 SESSION "
+            f"{event['event']}"
+        )
+
+        message = format_session_event(
+            event
+        )
+
+        send_message(
+            message,
+            "Session Open/Close"
         )
 
 
@@ -453,6 +496,9 @@ def run_engine():
     print(
         "=" * 60
     )
+
+    # Session open / close check
+    check_session_open_close()
 
     for symbol in SYMBOLS:
 
