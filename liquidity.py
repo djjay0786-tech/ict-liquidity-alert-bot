@@ -1,10 +1,6 @@
 import pandas as pd
 
 
-# ============================================================
-# PREPARE CANDLES
-# ============================================================
-
 def prepare_candles(values):
 
     df = pd.DataFrame(values)
@@ -32,8 +28,10 @@ def prepare_candles(values):
     df = df.dropna(
         subset=[
             "datetime",
+            "open",
             "high",
-            "low"
+            "low",
+            "close"
         ]
     )
 
@@ -48,138 +46,210 @@ def prepare_candles(values):
     return df
 
 
-# ============================================================
-# PREVIOUS DAY HIGH / LOW
-# ============================================================
+def get_previous_day_levels(df):
+
+    if df is None or df.empty:
+        return None
+
+    data = df.copy()
+
+    data["date"] = (
+        data["datetime"].dt.date
+    )
+
+    current_date = (
+        data.iloc[-1]["date"]
+    )
+
+    previous_data = data[
+        data["date"] < current_date
+    ]
+
+    if previous_data.empty:
+        return None
+
+    previous_date = (
+        previous_data.iloc[-1]["date"]
+    )
+
+    previous_day = previous_data[
+        previous_data["date"]
+        == previous_date
+    ]
+
+    if previous_day.empty:
+        return None
+
+    pdh = float(
+        previous_day["high"].max()
+    )
+
+    pdl = float(
+        previous_day["low"].min()
+    )
+
+    return {
+        "date": str(previous_date),
+        "PDH": pdh,
+        "PDL": pdl
+    }
+
 
 def previous_day_levels(df):
 
-    if df.empty:
-        return None
-
-    df = df.copy()
-
-    df["date"] = df["datetime"].dt.date
-
-    daily = df.groupby("date").agg(
-        day_high=("high", "max"),
-        day_low=("low", "min")
+    levels = get_previous_day_levels(
+        df
     )
 
-    if len(daily) < 2:
+    if levels is None:
         return None
 
-    previous = daily.iloc[-2]
-
     return {
-        "PDH": float(previous["day_high"]),
-        "PDL": float(previous["day_low"])
+        "PDH": levels["PDH"],
+        "PDL": levels["PDL"]
     }
 
-
-# ============================================================
-# CURRENT DAY HIGH / LOW
-# ============================================================
 
 def current_day_levels(df):
 
-    if df.empty:
+    if df is None or df.empty:
         return None
 
-    today = df["datetime"].dt.date.iloc[-1]
+    data = df.copy()
 
-    today_df = df[
-        df["datetime"].dt.date == today
+    data["date"] = (
+        data["datetime"].dt.date
+    )
+
+    current_date = (
+        data.iloc[-1]["date"]
+    )
+
+    current_day = data[
+        data["date"]
+        == current_date
     ]
 
-    if today_df.empty:
+    if current_day.empty:
         return None
 
     return {
-        "DH": float(today_df["high"].max()),
-        "DL": float(today_df["low"].min())
+        "DH": float(
+            current_day["high"].max()
+        ),
+        "DL": float(
+            current_day["low"].min()
+        )
     }
 
 
-# ============================================================
-# DETECT PREVIOUS DAY LIQUIDITY GRAB
-# ============================================================
-
 def detect_liquidity_grab(df):
 
-    if len(df) < 3:
+    if df is None or len(df) < 2:
         return []
 
-    levels = previous_day_levels(df)
+    levels = get_previous_day_levels(
+        df
+    )
 
     if levels is None:
         return []
 
     latest = df.iloc[-1]
 
+    pdh = float(
+        levels["PDH"]
+    )
+
+    pdl = float(
+        levels["PDL"]
+    )
+
+    latest_high = float(
+        latest["high"]
+    )
+
+    latest_low = float(
+        latest["low"]
+    )
+
     alerts = []
 
+    # ==================================
+    # PDL SWEEP
+    # ==================================
 
-    # ========================================================
-    # PREVIOUS DAY LOW SWEEP
-    # ========================================================
-
-    if latest["low"] < levels["PDL"]:
-
-        alerts.append({
-
-            "type": "BULLISH LIQUIDITY GRAB",
-
-            "level": "Previous Day Low",
-
-            "price": float(
-                latest["low"]
-            ),
-
-            "liquidity": levels["PDL"],
-
-            "time": str(
-                latest["datetime"]
-            )
-
-        })
-
-
-    # ========================================================
-    # PREVIOUS DAY HIGH SWEEP
-    # ========================================================
-
-    if latest["high"] > levels["PDH"]:
+    if latest_low < pdl:
 
         alerts.append({
+            "type":
+                "BULLISH LIQUIDITY GRAB",
 
-            "type": "BEARISH LIQUIDITY GRAB",
+            "source":
+                "PREVIOUS DAY",
 
-            "level": "Previous Day High",
+            "level":
+                "PDL",
 
-            "price": float(
-                latest["high"]
-            ),
+            "level_date":
+                levels["date"],
 
-            "liquidity": levels["PDH"],
+            "liquidity":
+                pdl,
 
-            "time": str(
-                latest["datetime"]
-            )
+            "price":
+                latest_low,
 
+            "time":
+                str(
+                    latest["datetime"]
+                )
         })
 
+    # ==================================
+    # PDH SWEEP
+    # ==================================
+
+    if latest_high > pdh:
+
+        alerts.append({
+            "type":
+                "BEARISH LIQUIDITY GRAB",
+
+            "source":
+                "PREVIOUS DAY",
+
+            "level":
+                "PDH",
+
+            "level_date":
+                levels["date"],
+
+            "liquidity":
+                pdh,
+
+            "price":
+                latest_high,
+
+            "time":
+                str(
+                    latest["datetime"]
+                )
+        })
 
     return alerts
 
 
-# ============================================================
-# FORMAT ALERT
-# ============================================================
+def format_alert(
+    symbol,
+    alert
+):
 
-def format_alert(symbol, alert):
-
-    if "BULLISH" in alert["type"]:
+    if (
+        alert["type"]
+        ==
+        "BULLISH LIQUIDITY GRAB"
+    ):
 
         emoji = "🟢"
 
@@ -187,25 +257,27 @@ def format_alert(symbol, alert):
 
         emoji = "🔴"
 
-
-    message = (
-
-        f"{emoji} LIQUIDITY GRAB\n\n"
+    return (
+        f"{emoji} PDH/PDL "
+        f"LIQUIDITY GRAB\n\n"
 
         f"Symbol: {symbol}\n"
 
-        f"Type: {alert['type']}\n"
+        f"Type: "
+        f"{alert['type']}\n"
 
-        f"Level: {alert['level']}\n"
+        f"Level: "
+        f"{alert['level']}\n"
 
-        f"Liquidity: "
+        f"Previous Day: "
+        f"{alert['level_date']}\n\n"
+
+        f"Liquidity Level: "
         f"{alert['liquidity']:.5f}\n"
 
-        f"Grab Price: "
-        f"{alert['price']:.5f}\n"
+        f"Sweep Price: "
+        f"{alert['price']:.5f}\n\n"
 
-        f"Time: {alert['time']}"
-
+        f"Time: "
+        f"{alert['time']}"
     )
-
-    return message
