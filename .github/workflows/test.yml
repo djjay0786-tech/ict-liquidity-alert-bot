@@ -72,3 +72,6 @@ jobs:
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python test_multi_timeframe_ob.py
+        
+      - name: Run OB State test
+        run: python test_ob_state.py
