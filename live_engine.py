@@ -30,7 +30,7 @@ from ob_fvg import (
 )
 
 from ob_tap import (
-    detect_first_tap,
+    is_latest_candle_first_tap,
     create_tap_alert
 )
 
@@ -201,6 +201,7 @@ def check_liquidity(
     alerts = detect_liquidity_grab(df)
 
     if not alerts:
+
         print(
             f"💧 No PDH/PDL grab | "
             f"{symbol} | {timeframe}"
@@ -208,7 +209,9 @@ def check_liquidity(
 
     for alert in alerts:
 
-        print("\n🚨 LIQUIDITY GRAB")
+        print(
+            "\n🚨 LIQUIDITY GRAB"
+        )
 
         send_liquidity_alert(
             symbol,
@@ -268,7 +271,9 @@ def check_crt(
 
     for alert in alerts:
 
-        print("\n🚨 CRT DETECTED")
+        print(
+            "\n🚨 CRT DETECTED"
+        )
 
         send_crt_alert(
             symbol,
@@ -296,7 +301,9 @@ def check_fvg(
 
     latest_fvg = fvgs[-1]
 
-    print("\n🚨 FVG DETECTED")
+    print(
+        "\n🚨 FVG DETECTED"
+    )
 
     send_fvg_alert(
         symbol,
@@ -322,7 +329,9 @@ def check_ob_fvg(
 
         return
 
-    print("\n🚨 OB + FVG SETUP")
+    print(
+        "\n🚨 OB + FVG SETUP"
+    )
 
     ob = setup["ob"]
     fvg = setup["fvg"]
@@ -374,6 +383,7 @@ def check_ob_first_tap(
 
     ob = setup["ob"]
 
+    # Check state first
     can_alert = can_alert_first_tap(
         symbol,
         timeframe,
@@ -389,21 +399,26 @@ def check_ob_first_tap(
 
         return
 
-    candle = df.iloc[-1]
-
-    touched = detect_first_tap(
-        candle,
-        ob
+    # IMPORTANT:
+    # Latest candle must be the FIRST
+    # candle to touch this OB.
+    first_tap_now = (
+        is_latest_candle_first_tap(
+            df,
+            ob
+        )
     )
 
-    if not touched:
+    if not first_tap_now:
 
         print(
-            f"⏳ Waiting for first OB tap | "
+            f"⏳ No new first OB tap | "
             f"{symbol} | {timeframe}"
         )
 
         return
+
+    candle = df.iloc[-1]
 
     print(
         "\n🚨 ORDER BLOCK FIRST TAP"
@@ -421,6 +436,7 @@ def check_ob_first_tap(
         "OB First Tap"
     )
 
+    # Prevent another alert
     confirm_first_tap(
         symbol,
         timeframe
