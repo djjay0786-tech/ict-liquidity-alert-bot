@@ -33,3 +33,6 @@ jobs:
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python test_session.py
+        
+      - name: Run DXY test
+        run: python test_dxy.py
