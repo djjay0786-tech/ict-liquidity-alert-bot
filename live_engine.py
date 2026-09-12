@@ -316,7 +316,70 @@ def check_ob_fvg(
     timeframe,
     df
 ):
+    
+def check_ob_first_tap(symbol, timeframe, df):
 
+    setup = select_ob_near_fvg(df)
+
+    if setup is None:
+        print(
+            f"👆 No OB for First Tap | "
+            f"{symbol} | {timeframe}"
+        )
+        return
+
+    ob = setup["ob"]
+
+    # Register / check current OB state
+    can_alert = can_alert_first_tap(
+        symbol,
+        timeframe,
+        ob
+    )
+
+    if not can_alert:
+        print(
+            f"🚫 OB already tapped | "
+            f"{symbol} | {timeframe}"
+        )
+        return
+
+    # Latest candle
+    candle = df.iloc[-1]
+
+    # Check whether latest candle touched OB
+    touched = detect_first_tap(
+        candle,
+        ob
+    )
+
+    if not touched:
+        print(
+            f"⏳ Waiting for first OB tap | "
+            f"{symbol} | {timeframe}"
+        )
+        return
+
+    print("\n🚨 ORDER BLOCK FIRST TAP")
+
+    message = create_tap_alert(
+        symbol,
+        timeframe,
+        ob,
+        candle
+    )
+
+    send_message(
+        message,
+        "OB First Tap"
+    )
+
+    # Mark this OB as tapped
+    confirm_first_tap(
+        symbol,
+        timeframe
+    )
+    
     setup = select_ob_near_fvg(df)
 
     if setup is None:
