@@ -1,8 +1,17 @@
 from market_data import get_candles
-from liquidity import prepare_candles, detect_liquidity_grab, format_alert
+from liquidity import (
+    prepare_candles,
+    detect_liquidity_grab,
+    format_alert
+)
+import time
 
 
-symbols = ["EUR/USD", "GBP/USD"]
+symbols = [
+    "EUR/USD",
+    "GBP/USD"
+]
+
 
 for symbol in symbols:
 
@@ -10,24 +19,54 @@ for symbol in symbols:
     print(f"Testing Liquidity: {symbol}")
     print("=" * 50)
 
-    data = get_candles(
-        symbol,
-        interval="1h",
-        outputsize=100
-    )
+    try:
 
-    if "values" not in data:
-        print("❌ No market data")
-        continue
+        data = get_candles(
+            symbol,
+            interval="1h",
+            outputsize=100
+        )
 
-    df = prepare_candles(data["values"])
+        if "values" not in data:
 
-    alerts = detect_liquidity_grab(df)
+            print("⚠️ No market data")
+            print(data)
+            continue
 
-    if alerts:
+        df = prepare_candles(
+            data["values"]
+        )
 
-        for alert in alerts:
-            print(format_alert(symbol, alert))
+        alerts = detect_liquidity_grab(
+            df
+        )
 
-    else:
-        print("No liquidity grab detected.")
+        if alerts:
+
+            for alert in alerts:
+
+                print(
+                    format_alert(
+                        symbol,
+                        alert
+                    )
+                )
+
+        else:
+
+            print(
+                "No liquidity grab detected."
+            )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ {symbol} skipped"
+        )
+
+        print(
+            f"Reason: {e}"
+        )
+
+    # Protect Twelve Data rate limit
+    time.sleep(8)
