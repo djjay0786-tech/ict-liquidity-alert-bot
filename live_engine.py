@@ -3,7 +3,10 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from market_data import get_candles
-from dxy_data import get_dxy_candles, prepare_dxy_candles
+from dxy_data import (
+    get_dxy_candles,
+    prepare_dxy_candles
+)
 
 from liquidity import (
     prepare_candles,
@@ -46,6 +49,12 @@ from ob_state import (
     confirm_first_tap
 )
 
+from alert_state import (
+    make_alert_id,
+    can_send_alert,
+    mark_alert_sent
+)
+
 from telegram_alert import send_alert
 
 
@@ -66,7 +75,14 @@ TIMEFRAMES = [
 UTC = ZoneInfo("UTC")
 
 
-def get_market_data(symbol, timeframe):
+# ==========================================
+# MARKET DATA
+# ==========================================
+
+def get_market_data(
+    symbol,
+    timeframe
+):
 
     if symbol == "DXY":
 
@@ -75,7 +91,9 @@ def get_market_data(symbol, timeframe):
             limit=200
         )
 
-        return prepare_dxy_candles(data)
+        return prepare_dxy_candles(
+            data
+        )
 
     data = get_candles(
         symbol,
@@ -91,15 +109,25 @@ def get_market_data(symbol, timeframe):
     )
 
 
-def send_message(message, label):
+# ==========================================
+# TELEGRAM
+# ==========================================
+
+def send_message(
+    message,
+    label
+):
 
     try:
 
         send_alert(message)
 
         print(
-            f"📲 Telegram {label} alert sent"
+            f"📲 Telegram "
+            f"{label} alert sent"
         )
+
+        return True
 
     except Exception as e:
 
@@ -107,10 +135,56 @@ def send_message(message, label):
             f"⚠️ Telegram error: {e}"
         )
 
+        return False
+
+
+def send_once(
+    alert_id,
+    message,
+    label,
+    details=None
+):
+
+    if not can_send_alert(
+        alert_id
+    ):
+
+        print(
+            f"🚫 Duplicate {label} "
+            f"alert blocked"
+        )
+
+        return False
+
+    sent = send_message(
+        message,
+        label
+    )
+
+    # IMPORTANT:
+    # Only mark alert after Telegram
+    # successfully sends the message.
+    if sent:
+
+        mark_alert_sent(
+            alert_id,
+            details
+        )
+
+        return True
+
+    return False
+
+
+# ==========================================
+# SESSION OPEN / CLOSE
+# ==========================================
 
 def check_session_open_close():
 
-    current_utc = datetime.now(UTC)
+    current_utc = datetime.now(
+        UTC
+    )
 
     events = get_session_events(
         current_utc
@@ -119,123 +193,47 @@ def check_session_open_close():
     if not events:
 
         print(
-            "🕒 No session open/close event"
+            "🕒 No session "
+            "open/close event"
         )
 
         return
 
     for event in events:
 
-        print(
-            f"\n🚨 SESSION "
-            f"{event['event']}"
+        session = event["session"]
+        event_type = event["event"]
+
+        alert_id = make_alert_id(
+            "SESSION_EVENT",
+            session,
+            "GLOBAL",
+            event["local_time"],
+            event_type
         )
 
-        message = format_session_event(
+        message = (
+            format_session_event(
+                event
+            )
+        )
+
+        print(
+            f"\n🚨 {session} "
+            f"SESSION {event_type}"
+        )
+
+        send_once(
+            alert_id,
+            message,
+            "Session Open/Close",
             event
         )
 
-        send_message(
-            message,
-            "Session Open/Close"
-        )
 
-
-def send_liquidity_alert(
-    symbol,
-    timeframe,
-    alert
-):
-
-    message = format_alert(
-        symbol,
-        alert
-    )
-
-    message += (
-        f"\nTimeframe: {timeframe}"
-    )
-
-    send_message(
-        message,
-        "liquidity"
-    )
-
-
-def send_session_alert(
-    symbol,
-    timeframe,
-    alert
-):
-
-    message = format_session_alert(
-        symbol,
-        alert
-    )
-
-    message += (
-        f"\nTimeframe: {timeframe}"
-    )
-
-    send_message(
-        message,
-        "session liquidity"
-    )
-
-
-def send_crt_alert(
-    symbol,
-    timeframe,
-    alert
-):
-
-    message = format_crt_alert(
-        symbol,
-        timeframe,
-        alert
-    )
-
-    send_message(
-        message,
-        "CRT"
-    )
-
-
-def send_fvg_alert(
-    symbol,
-    timeframe,
-    fvg
-):
-
-    message = format_fvg_alert(
-        symbol,
-        timeframe,
-        fvg
-    )
-
-    send_message(
-        message,
-        "FVG"
-    )
-
-
-def send_ob_fvg_alert(
-    symbol,
-    timeframe,
-    setup
-):
-
-    message = format_ob_fvg_selection(
-        symbol,
-        timeframe,
-        setup
-    )
-
-    send_message(
-        message,
-        "OB + FVG"
-    )
-
+# ==========================================
+# LIQUIDITY
+# ==========================================
 
 def check_liquidity(
     symbol,
@@ -243,7 +241,9 @@ def check_liquidity(
     df
 ):
 
-    alerts = detect_liquidity_grab(df)
+    alerts = detect_liquidity_grab(
+        df
+    )
 
     if not alerts:
 
@@ -252,18 +252,49 @@ def check_liquidity(
             f"{symbol} | {timeframe}"
         )
 
+        return
+
     for alert in alerts:
+
+        alert_id = make_alert_id(
+            "LIQUIDITY",
+            symbol,
+            timeframe,
+            alert.get(
+                "time",
+                ""
+            ),
+            (
+                f"{alert.get('type', '')}|"
+                f"{alert.get('level', '')}"
+            )
+        )
+
+        message = format_alert(
+            symbol,
+            alert
+        )
+
+        message += (
+            f"\nTimeframe: "
+            f"{timeframe}"
+        )
 
         print(
             "\n🚨 LIQUIDITY GRAB"
         )
 
-        send_liquidity_alert(
-            symbol,
-            timeframe,
+        send_once(
+            alert_id,
+            message,
+            "Liquidity",
             alert
         )
 
+
+# ==========================================
+# SESSION LIQUIDITY
+# ==========================================
 
 def check_session_liquidity(
     symbol,
@@ -276,9 +307,11 @@ def check_session_liquidity(
         "NEW YORK"
     ]:
 
-        alerts = detect_session_liquidity(
-            df,
-            session
+        alerts = (
+            detect_session_liquidity(
+                df,
+                session
+            )
         )
 
         if not alerts:
@@ -286,16 +319,49 @@ def check_session_liquidity(
 
         for alert in alerts:
 
-            print(
-                "\n🚨 SESSION LIQUIDITY"
-            )
-
-            send_session_alert(
+            alert_id = make_alert_id(
+                "SESSION_LIQUIDITY",
                 symbol,
                 timeframe,
+                alert.get(
+                    "time",
+                    ""
+                ),
+                (
+                    f"{session}|"
+                    f"{alert.get('level', '')}|"
+                    f"{alert.get('type', '')}"
+                )
+            )
+
+            message = (
+                format_session_alert(
+                    symbol,
+                    alert
+                )
+            )
+
+            message += (
+                f"\nTimeframe: "
+                f"{timeframe}"
+            )
+
+            print(
+                "\n🚨 SESSION "
+                "LIQUIDITY"
+            )
+
+            send_once(
+                alert_id,
+                message,
+                "Session Liquidity",
                 alert
             )
 
+
+# ==========================================
+# CRT
+# ==========================================
 
 def check_crt(
     symbol,
@@ -303,7 +369,9 @@ def check_crt(
     df
 ):
 
-    alerts = detect_crt(df)
+    alerts = detect_crt(
+        df
+    )
 
     if not alerts:
 
@@ -316,16 +384,41 @@ def check_crt(
 
     for alert in alerts:
 
-        print(
-            "\n🚨 CRT DETECTED"
+        alert_id = make_alert_id(
+            "CRT",
+            symbol,
+            timeframe,
+            alert.get(
+                "second_candle_time",
+                ""
+            ),
+            alert.get(
+                "type",
+                ""
+            )
         )
 
-        send_crt_alert(
+        message = format_crt_alert(
             symbol,
             timeframe,
             alert
         )
 
+        print(
+            "\n🚨 CRT DETECTED"
+        )
+
+        send_once(
+            alert_id,
+            message,
+            "CRT",
+            alert
+        )
+
+
+# ==========================================
+# FVG
+# ==========================================
 
 def check_fvg(
     symbol,
@@ -333,7 +426,9 @@ def check_fvg(
     df
 ):
 
-    fvgs = detect_fvg(df)
+    fvgs = detect_fvg(
+        df
+    )
 
     if not fvgs:
 
@@ -346,16 +441,41 @@ def check_fvg(
 
     latest_fvg = fvgs[-1]
 
-    print(
-        "\n🚨 FVG DETECTED"
+    alert_id = make_alert_id(
+        "FVG",
+        symbol,
+        timeframe,
+        latest_fvg.get(
+            "time",
+            ""
+        ),
+        latest_fvg.get(
+            "type",
+            ""
+        )
     )
 
-    send_fvg_alert(
+    message = format_fvg_alert(
         symbol,
         timeframe,
         latest_fvg
     )
 
+    print(
+        "\n🚨 FVG DETECTED"
+    )
+
+    send_once(
+        alert_id,
+        message,
+        "FVG",
+        latest_fvg
+    )
+
+
+# ==========================================
+# OB + FVG
+# ==========================================
 
 def check_ob_fvg(
     symbol,
@@ -363,7 +483,9 @@ def check_ob_fvg(
     df
 ):
 
-    setup = select_ob_near_fvg(df)
+    setup = select_ob_near_fvg(
+        df
+    )
 
     if setup is None:
 
@@ -374,12 +496,34 @@ def check_ob_fvg(
 
         return
 
+    ob = setup["ob"]
+    fvg = setup["fvg"]
+
+    alert_id = make_alert_id(
+        "OB_FVG",
+        symbol,
+        timeframe,
+        ob.get(
+            "time",
+            ""
+        ),
+        (
+            f"{ob.get('type', '')}|"
+            f"{fvg.get('time', '')}"
+        )
+    )
+
+    message = (
+        format_ob_fvg_selection(
+            symbol,
+            timeframe,
+            setup
+        )
+    )
+
     print(
         "\n🚨 OB + FVG SETUP"
     )
-
-    ob = setup["ob"]
-    fvg = setup["fvg"]
 
     print(
         f"OB: {ob['type']}"
@@ -402,12 +546,20 @@ def check_ob_fvg(
         f"{setup['distance']}"
     )
 
-    send_ob_fvg_alert(
-        symbol,
-        timeframe,
-        setup
+    send_once(
+        alert_id,
+        message,
+        "OB + FVG",
+        {
+            "ob": ob,
+            "fvg": fvg
+        }
     )
 
+
+# ==========================================
+# OB FIRST TAP
+# ==========================================
 
 def check_ob_first_tap(
     symbol,
@@ -415,7 +567,9 @@ def check_ob_first_tap(
     df
 ):
 
-    setup = select_ob_near_fvg(df)
+    setup = select_ob_near_fvg(
+        df
+    )
 
     if setup is None:
 
@@ -428,10 +582,12 @@ def check_ob_first_tap(
 
     ob = setup["ob"]
 
-    can_alert = can_alert_first_tap(
-        symbol,
-        timeframe,
-        ob
+    can_alert = (
+        can_alert_first_tap(
+            symbol,
+            timeframe,
+            ob
+        )
     )
 
     if not can_alert:
@@ -461,10 +617,6 @@ def check_ob_first_tap(
 
     candle = df.iloc[-1]
 
-    print(
-        "\n🚨 ORDER BLOCK FIRST TAP"
-    )
-
     message = create_tap_alert(
         symbol,
         timeframe,
@@ -472,16 +624,29 @@ def check_ob_first_tap(
         candle
     )
 
-    send_message(
+    print(
+        "\n🚨 ORDER BLOCK "
+        "FIRST TAP"
+    )
+
+    sent = send_message(
         message,
         "OB First Tap"
     )
 
-    confirm_first_tap(
-        symbol,
-        timeframe
-    )
+    # Mark tapped ONLY if
+    # Telegram send succeeds.
+    if sent:
 
+        confirm_first_tap(
+            symbol,
+            timeframe
+        )
+
+
+# ==========================================
+# LIVE ENGINE
+# ==========================================
 
 def run_engine():
 
@@ -497,7 +662,6 @@ def run_engine():
         "=" * 60
     )
 
-    # Session open / close check
     check_session_open_close()
 
     for symbol in SYMBOLS:
@@ -506,7 +670,8 @@ def run_engine():
 
             print(
                 f"\nChecking "
-                f"{symbol} | {timeframe}"
+                f"{symbol} | "
+                f"{timeframe}"
             )
 
             try:
