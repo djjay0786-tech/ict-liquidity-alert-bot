@@ -2,12 +2,15 @@ import pandas as pd
 
 from liquidity import (
     get_previous_day_levels,
+    get_prior_current_day_levels,
     detect_liquidity_grab,
+    detect_daily_liquidity_grab,
     format_alert
 )
 
 
 def make_df(rows):
+
     df = pd.DataFrame(rows)
 
     df["datetime"] = pd.to_datetime(
@@ -64,20 +67,8 @@ def test_pdh_sweep():
         == "PDH"
     )
 
-    assert (
-        alerts[0]["type"]
-        == "BEARISH LIQUIDITY GRAB"
-    )
-
     print(
         "\n✅ PDH SWEEP TEST PASSED"
-    )
-
-    print(
-        format_alert(
-            "EUR/USD",
-            alerts[0]
-        )
     )
 
 
@@ -118,13 +109,124 @@ def test_pdl_sweep():
         == "PDL"
     )
 
+    print(
+        "\n✅ PDL SWEEP TEST PASSED"
+    )
+
+
+def test_dh_sweep():
+
+    df = make_df([
+        {
+            "datetime": "2026-09-12 00:00:00+00:00",
+            "open": 1.1700,
+            "high": 1.1720,
+            "low": 1.1690,
+            "close": 1.1710,
+        },
+        {
+            "datetime": "2026-09-12 01:00:00+00:00",
+            "open": 1.1710,
+            "high": 1.1730,
+            "low": 1.1700,
+            "close": 1.1720,
+        },
+        {
+            "datetime": "2026-09-12 02:00:00+00:00",
+            "open": 1.1720,
+            "high": 1.1745,
+            "low": 1.1710,
+            "close": 1.1740,
+        }
+    ])
+
+    levels = (
+        get_prior_current_day_levels(
+            df
+        )
+    )
+
+    assert round(
+        levels["DH"],
+        5
+    ) == 1.17300
+
+    alerts = (
+        detect_daily_liquidity_grab(
+            df
+        )
+    )
+
+    assert len(alerts) == 1
+
+    assert (
+        alerts[0]["level"]
+        == "DH"
+    )
+
+    assert (
+        alerts[0]["type"]
+        == "BEARISH LIQUIDITY GRAB"
+    )
+
+    print(
+        "\n✅ DH SWEEP TEST PASSED"
+    )
+
+    print(
+        format_alert(
+            "EUR/USD",
+            alerts[0]
+        )
+    )
+
+
+def test_dl_sweep():
+
+    df = make_df([
+        {
+            "datetime": "2026-09-12 00:00:00+00:00",
+            "open": 1.1700,
+            "high": 1.1720,
+            "low": 1.1680,
+            "close": 1.1710,
+        },
+        {
+            "datetime": "2026-09-12 01:00:00+00:00",
+            "open": 1.1710,
+            "high": 1.1730,
+            "low": 1.1690,
+            "close": 1.1700,
+        },
+        {
+            "datetime": "2026-09-12 02:00:00+00:00",
+            "open": 1.1700,
+            "high": 1.1710,
+            "low": 1.1665,
+            "close": 1.1680,
+        }
+    ])
+
+    alerts = (
+        detect_daily_liquidity_grab(
+            df
+        )
+    )
+
+    assert len(alerts) == 1
+
+    assert (
+        alerts[0]["level"]
+        == "DL"
+    )
+
     assert (
         alerts[0]["type"]
         == "BULLISH LIQUIDITY GRAB"
     )
 
     print(
-        "\n✅ PDL SWEEP TEST PASSED"
+        "\n✅ DL SWEEP TEST PASSED"
     )
 
     print(
@@ -135,33 +237,35 @@ def test_pdl_sweep():
     )
 
 
-def test_no_sweep():
+def test_no_daily_sweep():
 
     df = make_df([
         {
-            "datetime": "2026-09-11 00:00:00+00:00",
+            "datetime": "2026-09-12 00:00:00+00:00",
             "open": 1.1700,
-            "high": 1.1750,
+            "high": 1.1740,
             "low": 1.1680,
-            "close": 1.1720,
+            "close": 1.1710,
         },
         {
-            "datetime": "2026-09-12 00:00:00+00:00",
+            "datetime": "2026-09-12 01:00:00+00:00",
             "open": 1.1710,
-            "high": 1.1740,
+            "high": 1.1730,
             "low": 1.1690,
             "close": 1.1720,
         }
     ])
 
-    alerts = detect_liquidity_grab(
-        df
+    alerts = (
+        detect_daily_liquidity_grab(
+            df
+        )
     )
 
     assert len(alerts) == 0
 
     print(
-        "\n✅ NO SWEEP TEST PASSED"
+        "\n✅ NO DH/DL SWEEP TEST PASSED"
     )
 
 
@@ -171,8 +275,12 @@ if __name__ == "__main__":
 
     test_pdl_sweep()
 
-    test_no_sweep()
+    test_dh_sweep()
+
+    test_dl_sweep()
+
+    test_no_daily_sweep()
 
     print(
-        "\n🔥 ALL PDH/PDL TESTS PASSED"
+        "\n🔥 ALL LIQUIDITY TESTS PASSED"
     )
