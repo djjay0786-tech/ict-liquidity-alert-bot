@@ -14,6 +14,11 @@ from session_liquidity import (
     format_session_alert
 )
 
+from crt import (
+    detect_crt,
+    format_crt_alert
+)
+
 from telegram_alert import send_alert
 
 
@@ -74,7 +79,7 @@ def send_liquidity_alert(
         send_alert(message)
 
         print(
-            "📲 Telegram alert sent"
+            "📲 Telegram liquidity alert sent"
         )
 
     except Exception as e:
@@ -105,6 +110,33 @@ def send_session_alert(
 
         print(
             "📲 Telegram session alert sent"
+        )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ Telegram error: {e}"
+        )
+
+
+def send_crt_alert(
+    symbol,
+    timeframe,
+    alert
+):
+
+    message = format_crt_alert(
+        symbol,
+        timeframe,
+        alert
+    )
+
+    try:
+
+        send_alert(message)
+
+        print(
+            "📲 Telegram CRT alert sent"
         )
 
     except Exception as e:
@@ -163,13 +195,12 @@ def check_session_liquidity(
         )
 
         if not alerts:
-
             continue
 
         for alert in alerts:
 
             print(
-                f"\n🚨 SESSION LIQUIDITY"
+                "\n🚨 SESSION LIQUIDITY"
             )
 
             print(
@@ -181,6 +212,54 @@ def check_session_liquidity(
                 timeframe,
                 alert
             )
+
+
+def check_crt(
+    symbol,
+    timeframe,
+    df
+):
+
+    alerts = detect_crt(df)
+
+    if not alerts:
+
+        print(
+            f"🕯️ No CRT | "
+            f"{symbol} | {timeframe}"
+        )
+
+        return
+
+    for alert in alerts:
+
+        print(
+            "\n🚨 CRT DETECTED"
+        )
+
+        print(
+            f"{symbol} | {timeframe}"
+        )
+
+        print(
+            f"Type: {alert['type']}"
+        )
+
+        print(
+            f"Confirmation: "
+            f"{alert['confirmation_close']}"
+        )
+
+        print(
+            f"Entry Reference: "
+            f"{alert['entry_price']}"
+        )
+
+        send_crt_alert(
+            symbol,
+            timeframe,
+            alert
+        )
 
 
 def run_engine():
@@ -218,13 +297,22 @@ def run_engine():
                     f"candles received"
                 )
 
+                # 1️⃣ Previous Day Liquidity
                 check_liquidity(
                     symbol,
                     timeframe,
                     df
                 )
 
+                # 2️⃣ Session Liquidity
                 check_session_liquidity(
+                    symbol,
+                    timeframe,
+                    df
+                )
+
+                # 3️⃣ CRT
+                check_crt(
                     symbol,
                     timeframe,
                     df
