@@ -67,3 +67,8 @@ jobs:
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python test_ob_tap.py
+        
+      - name: Run Multi-Timeframe OB test
+        env:
+          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+        run: python test_multi_timeframe_ob.py
