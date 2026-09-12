@@ -1,83 +1,182 @@
-name: Market Data Test
+name: ICT Bot Test
 
 on:
   workflow_dispatch:
+    inputs:
+      deep_tests:
+        description: "Run all deep API tests"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
+
   test:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
+
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+
+      # ==========================================
+      # BASIC MARKET DATA TEST
+      # ==========================================
 
       - name: Run market test
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python test_market.py
-        
+
+
+      - name: Wait for API limit
+        run: sleep 15
+
+
+      # ==========================================
+      # LIQUIDITY TEST
+      # ==========================================
+
       - name: Run liquidity test
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python test_liquidity.py
-        
+
+
+      - name: Wait after liquidity test
+        run: sleep 15
+
+
+      # ==========================================
+      # SESSION LIQUIDITY TEST
+      # ==========================================
+
       - name: Run session liquidity test
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python test_session.py
-        
+
+
+      # ==========================================
+      # DXY TESTS
+      # Biquote - No Twelve Data API credit
+      # ==========================================
+
       - name: Run DXY test
         run: python test_dxy.py
-        
+
+
       - name: Run DXY liquidity test
         run: python test_dxy_liquidity.py
-        
-      - name: Run CRT test
-        env:
-          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
-        run: python test_crt.py
-        
+
+
       - name: Run DXY CRT test
         run: python test_dxy_crt.py
-        
-      - name: Run FVG test
-        env:
-          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
-        run: python test_fvg.py
-        
-      - name: Run Order Block test
-        env:
-          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
-        run: python test_order_block.py
-        
-      - name: Run OB + FVG test
-        env:
-          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
-        run: python test_ob_fvg.py
-        
-      - name: Run OB First Tap test
-        env:
-          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
-        run: python test_ob_tap.py
-        
-      - name: Run Multi-Timeframe OB test
-        env:
-          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
-        run: python test_multi_timeframe_ob.py
-        
+
+
+      # ==========================================
+      # LOCAL STATE TEST
+      # No external market API
+      # ==========================================
+
       - name: Run OB State test
         run: python test_ob_state.py
-        
+
+
+      # ==========================================
+      # TELEGRAM TEST
+      # ==========================================
+
       - name: Run Telegram test
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python test_telegram.py
+
+
+      # ==========================================
+      # DEEP TESTS
+      # Run only when deep_tests = true
+      # ==========================================
+
+      - name: Wait before deep tests
+        if: ${{ inputs.deep_tests }}
+        run: sleep 65
+
+
+      - name: Run CRT deep test
+        if: ${{ inputs.deep_tests }}
+        env:
+          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+        run: python test_crt.py
+
+
+      - name: Wait after CRT
+        if: ${{ inputs.deep_tests }}
+        run: sleep 65
+
+
+      - name: Run FVG deep test
+        if: ${{ inputs.deep_tests }}
+        env:
+          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+        run: python test_fvg.py
+
+
+      - name: Wait after FVG
+        if: ${{ inputs.deep_tests }}
+        run: sleep 65
+
+
+      - name: Run Order Block deep test
+        if: ${{ inputs.deep_tests }}
+        env:
+          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+        run: python test_order_block.py
+
+
+      - name: Wait after Order Block
+        if: ${{ inputs.deep_tests }}
+        run: sleep 65
+
+
+      - name: Run OB + FVG deep test
+        if: ${{ inputs.deep_tests }}
+        env:
+          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+        run: python test_ob_fvg.py
+
+
+      - name: Wait after OB FVG
+        if: ${{ inputs.deep_tests }}
+        run: sleep 65
+
+
+      - name: Run OB First Tap deep test
+        if: ${{ inputs.deep_tests }}
+        env:
+          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+        run: python test_ob_tap.py
+
+
+      - name: Wait before MTF test
+        if: ${{ inputs.deep_tests }}
+        run: sleep 65
+
+
+      - name: Run Multi-Timeframe OB deep test
+        if: ${{ inputs.deep_tests }}
+        env:
+          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+        run: python test_multi_timeframe_ob.py
