@@ -29,7 +29,10 @@ from ob_fvg import (
     format_ob_fvg_selection
 )
 
-from ob_tap import detect_first_tap, create_tap_alert
+from ob_tap import (
+    detect_first_tap,
+    create_tap_alert
+)
 
 from ob_state import (
     can_alert_first_tap,
@@ -198,19 +201,14 @@ def check_liquidity(
     alerts = detect_liquidity_grab(df)
 
     if not alerts:
-
         print(
             f"💧 No PDH/PDL grab | "
             f"{symbol} | {timeframe}"
         )
 
-        return
-
     for alert in alerts:
 
-        print(
-            "\n🚨 LIQUIDITY GRAB"
-        )
+        print("\n🚨 LIQUIDITY GRAB")
 
         send_liquidity_alert(
             symbol,
@@ -270,9 +268,7 @@ def check_crt(
 
     for alert in alerts:
 
-        print(
-            "\n🚨 CRT DETECTED"
-        )
+        print("\n🚨 CRT DETECTED")
 
         send_crt_alert(
             symbol,
@@ -300,9 +296,7 @@ def check_fvg(
 
     latest_fvg = fvgs[-1]
 
-    print(
-        "\n🚨 FVG DETECTED"
-    )
+    print("\n🚨 FVG DETECTED")
 
     send_fvg_alert(
         symbol,
@@ -316,70 +310,7 @@ def check_ob_fvg(
     timeframe,
     df
 ):
-    
-def check_ob_first_tap(symbol, timeframe, df):
 
-    setup = select_ob_near_fvg(df)
-
-    if setup is None:
-        print(
-            f"👆 No OB for First Tap | "
-            f"{symbol} | {timeframe}"
-        )
-        return
-
-    ob = setup["ob"]
-
-    # Register / check current OB state
-    can_alert = can_alert_first_tap(
-        symbol,
-        timeframe,
-        ob
-    )
-
-    if not can_alert:
-        print(
-            f"🚫 OB already tapped | "
-            f"{symbol} | {timeframe}"
-        )
-        return
-
-    # Latest candle
-    candle = df.iloc[-1]
-
-    # Check whether latest candle touched OB
-    touched = detect_first_tap(
-        candle,
-        ob
-    )
-
-    if not touched:
-        print(
-            f"⏳ Waiting for first OB tap | "
-            f"{symbol} | {timeframe}"
-        )
-        return
-
-    print("\n🚨 ORDER BLOCK FIRST TAP")
-
-    message = create_tap_alert(
-        symbol,
-        timeframe,
-        ob,
-        candle
-    )
-
-    send_message(
-        message,
-        "OB First Tap"
-    )
-
-    # Mark this OB as tapped
-    confirm_first_tap(
-        symbol,
-        timeframe
-    )
-    
     setup = select_ob_near_fvg(df)
 
     if setup is None:
@@ -391,9 +322,7 @@ def check_ob_first_tap(symbol, timeframe, df):
 
         return
 
-    print(
-        "\n🚨 OB + FVG SETUP"
-    )
+    print("\n🚨 OB + FVG SETUP")
 
     ob = setup["ob"]
     fvg = setup["fvg"]
@@ -426,11 +355,91 @@ def check_ob_first_tap(symbol, timeframe, df):
     )
 
 
+def check_ob_first_tap(
+    symbol,
+    timeframe,
+    df
+):
+
+    setup = select_ob_near_fvg(df)
+
+    if setup is None:
+
+        print(
+            f"👆 No OB for First Tap | "
+            f"{symbol} | {timeframe}"
+        )
+
+        return
+
+    ob = setup["ob"]
+
+    can_alert = can_alert_first_tap(
+        symbol,
+        timeframe,
+        ob
+    )
+
+    if not can_alert:
+
+        print(
+            f"🚫 OB already tapped | "
+            f"{symbol} | {timeframe}"
+        )
+
+        return
+
+    candle = df.iloc[-1]
+
+    touched = detect_first_tap(
+        candle,
+        ob
+    )
+
+    if not touched:
+
+        print(
+            f"⏳ Waiting for first OB tap | "
+            f"{symbol} | {timeframe}"
+        )
+
+        return
+
+    print(
+        "\n🚨 ORDER BLOCK FIRST TAP"
+    )
+
+    message = create_tap_alert(
+        symbol,
+        timeframe,
+        ob,
+        candle
+    )
+
+    send_message(
+        message,
+        "OB First Tap"
+    )
+
+    confirm_first_tap(
+        symbol,
+        timeframe
+    )
+
+
 def run_engine():
 
-    print("\n" + "=" * 60)
-    print("🚀 ICT LIVE ALERT ENGINE")
-    print("=" * 60)
+    print(
+        "\n" + "=" * 60
+    )
+
+    print(
+        "🚀 ICT LIVE ALERT ENGINE"
+    )
+
+    print(
+        "=" * 60
+    )
 
     for symbol in SYMBOLS:
 
@@ -448,7 +457,10 @@ def run_engine():
                     timeframe
                 )
 
-                if df is None or df.empty:
+                if (
+                    df is None
+                    or df.empty
+                ):
 
                     print(
                         "⚠️ No market data"
@@ -461,36 +473,37 @@ def run_engine():
                     f"candles received"
                 )
 
-                # 1️⃣ Previous Day Liquidity
                 check_liquidity(
                     symbol,
                     timeframe,
                     df
                 )
 
-                # 2️⃣ Session Liquidity
                 check_session_liquidity(
                     symbol,
                     timeframe,
                     df
                 )
 
-                # 3️⃣ CRT
                 check_crt(
                     symbol,
                     timeframe,
                     df
                 )
 
-                # 4️⃣ FVG
                 check_fvg(
                     symbol,
                     timeframe,
                     df
                 )
 
-                # 5️⃣ OB + FVG
                 check_ob_fvg(
+                    symbol,
+                    timeframe,
+                    df
+                )
+
+                check_ob_first_tap(
                     symbol,
                     timeframe,
                     df
