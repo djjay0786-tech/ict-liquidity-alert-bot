@@ -39,3 +39,8 @@ jobs:
         
       - name: Run DXY liquidity test
         run: python test_dxy_liquidity.py
+        
+      - name: Run CRT test
+        env:
+          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+        run: python test_crt.py
