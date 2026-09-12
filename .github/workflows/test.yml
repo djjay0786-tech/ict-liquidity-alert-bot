@@ -11,6 +11,7 @@ on:
         options:
           - basic
           - liquidity_only
+          - session_liquidity_only
           - fvg_only
           - ob_fvg_only
           - deep
@@ -79,6 +80,10 @@ jobs:
         if: ${{ inputs.test_mode == 'liquidity_only' }}
         run: python test_liquidity_only.py
 
+      - name: Run Session Liquidity Only Test
+        if: ${{ inputs.test_mode == 'session_liquidity_only' }}
+        run: python test_session_liquidity_only.py
+
       - name: Run FVG Only Test
         if: ${{ inputs.test_mode == 'fvg_only' }}
         run: python test_fvg_only.py
@@ -102,6 +107,10 @@ jobs:
           sleep 8
 
           python test_crt.py
+
+          python test_liquidity_only.py
+
+          python test_session_liquidity_only.py
 
           python test_fvg_only.py
 
