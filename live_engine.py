@@ -476,6 +476,7 @@ def check_daily_liquidity(
 
 # ==========================================
 # SESSION LIQUIDITY
+# ASIA + LONDON + NEW YORK
 # ==========================================
 
 def check_session_liquidity(
@@ -488,6 +489,7 @@ def check_session_liquidity(
         return
 
     for session in [
+        "ASIA",
         "LONDON",
         "NEW YORK"
     ]:
@@ -500,6 +502,13 @@ def check_session_liquidity(
         )
 
         if not alerts:
+
+            print(
+                f"💧 No {session} "
+                f"liquidity sweep | "
+                f"{symbol}"
+            )
+
             continue
 
         for alert in alerts:
@@ -515,7 +524,7 @@ def check_session_liquidity(
             ):
 
                 print(
-                    f"🕰️ Old session "
+                    f"🕰️ Old {session} "
                     f"liquidity ignored | "
                     f"{symbol}"
                 )
@@ -530,7 +539,7 @@ def check_session_liquidity(
                 (
                     f"{session}|"
                     f"{alert.get('level', '')}|"
-                    f"{alert.get('type', '')}"
+                    f"{alert.get('session_date', '')}"
                 )
             )
 
@@ -547,8 +556,8 @@ def check_session_liquidity(
             )
 
             print(
-                "\n🚨 SESSION "
-                "LIQUIDITY"
+                f"\n🚨 {session} "
+                f"LIQUIDITY"
             )
 
             send_once(
