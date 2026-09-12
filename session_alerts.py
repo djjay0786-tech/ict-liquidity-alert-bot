@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import timedelta, time
 from zoneinfo import ZoneInfo
 
 
@@ -8,11 +8,13 @@ SESSIONS = {
         "open": time(0, 0),
         "close": time(9, 0),
     },
+
     "LONDON": {
         "timezone": "Europe/London",
         "open": time(8, 0),
         "close": time(17, 0),
     },
+
     "NEW YORK": {
         "timezone": "America/New_York",
         "open": time(8, 0),
@@ -21,71 +23,132 @@ SESSIONS = {
 }
 
 
-def get_session_events(current_utc):
-    """
-    Return session open/close events
-    matching the current UTC time.
-    """
+EVENT_WINDOW_MINUTES = 15
+
+
+def is_inside_event_window(
+    local_time,
+    target_time
+):
+
+    target = local_time.replace(
+        hour=target_time.hour,
+        minute=target_time.minute,
+        second=0,
+        microsecond=0
+    )
+
+    difference = (
+        local_time - target
+    )
+
+    return (
+        timedelta(0)
+        <= difference
+        <
+        timedelta(
+            minutes=EVENT_WINDOW_MINUTES
+        )
+    )
+
+
+def get_session_events(
+    current_utc
+):
 
     events = []
 
-    for session_name, session in SESSIONS.items():
+    for session_name, session in (
+        SESSIONS.items()
+    ):
 
         timezone = ZoneInfo(
             session["timezone"]
         )
 
-        local_time = current_utc.astimezone(
-            timezone
+        local_time = (
+            current_utc.astimezone(
+                timezone
+            )
         )
 
-        current_hm = (
-            local_time.hour,
-            local_time.minute
+        event_date = (
+            local_time.date().isoformat()
         )
 
-        open_hm = (
-            session["open"].hour,
-            session["open"].minute
-        )
-
-        close_hm = (
-            session["close"].hour,
-            session["close"].minute
-        )
-
-        if current_hm == open_hm:
+        if is_inside_event_window(
+            local_time,
+            session["open"]
+        ):
 
             events.append({
-                "session": session_name,
-                "event": "OPEN",
-                "local_time": str(local_time)
+                "session":
+                    session_name,
+
+                "event":
+                    "OPEN",
+
+                "event_date":
+                    event_date,
+
+                "scheduled_time":
+                    session[
+                        "open"
+                    ].strftime("%H:%M"),
+
+                "local_time":
+                    str(local_time)
             })
 
-        if current_hm == close_hm:
+        if is_inside_event_window(
+            local_time,
+            session["close"]
+        ):
 
             events.append({
-                "session": session_name,
-                "event": "CLOSE",
-                "local_time": str(local_time)
+                "session":
+                    session_name,
+
+                "event":
+                    "CLOSE",
+
+                "event_date":
+                    event_date,
+
+                "scheduled_time":
+                    session[
+                        "close"
+                    ].strftime("%H:%M"),
+
+                "local_time":
+                    str(local_time)
             })
 
     return events
 
 
-def format_session_event(event):
+def format_session_event(
+    event
+):
 
-    session = event["session"]
-    event_type = event["event"]
-
-    if event_type == "OPEN":
+    if event["event"] == "OPEN":
         emoji = "🟢"
     else:
         emoji = "🔴"
 
     return (
-        f"{emoji} SESSION {event_type}\n\n"
-        f"Session: {session}\n"
-        f"Event: {event_type}\n"
-        f"Local Time: {event['local_time']}"
+        f"{emoji} SESSION "
+        f"{event['event']}\n\n"
+
+        f"Session: "
+        f"{event['session']}\n"
+
+        f"Event: "
+        f"{event['event']}\n"
+
+        f"Scheduled Time: "
+        f"{event['scheduled_time']}\n"
+
+        f"Local Time: "
+        f"{event['local_time']}"
     )
