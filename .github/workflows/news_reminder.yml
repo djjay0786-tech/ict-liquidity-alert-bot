@@ -1,0 +1,38 @@
+name: Red News 12 Min Reminder
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    # Monday-Friday, every 5 minutes
+    - cron: "*/5 * * * 1-5"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: red-news-reminder
+  cancel-in-progress: false
+
+jobs:
+  news-reminder:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check Red News
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_GROUP_CHAT_ID: ${{ secrets.TELEGRAM_GROUP_CHAT_ID }}
+        run: python news_reminder.py
