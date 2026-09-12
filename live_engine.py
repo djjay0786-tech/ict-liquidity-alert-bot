@@ -2,6 +2,8 @@ import time
 
 from market_data import get_candles
 from dxy_data import get_dxy_candles, prepare_dxy_candles
+from liquidity import prepare_candles, detect_liquidity_grab
+
 
 SYMBOLS = [
     "EUR/USD",
@@ -37,10 +39,56 @@ def get_market_data(symbol, timeframe):
         if "values" not in data:
             return None
 
-        from order_block import prepare_candles
-
         return prepare_candles(
             data["values"]
+        )
+
+
+def check_liquidity(symbol, timeframe, df):
+
+    alerts = detect_liquidity_grab(df)
+
+    if not alerts:
+
+        print(
+            f"💧 No liquidity grab | "
+            f"{symbol} | {timeframe}"
+        )
+
+        return
+
+    for alert in alerts:
+
+        print(
+            f"\n🚨 LIQUIDITY GRAB DETECTED"
+        )
+
+        print(
+            f"Symbol: {symbol}"
+        )
+
+        print(
+            f"Timeframe: {timeframe}"
+        )
+
+        print(
+            f"Type: {alert['type']}"
+        )
+
+        print(
+            f"Level: {alert['level']}"
+        )
+
+        print(
+            f"Liquidity: {alert['liquidity']}"
+        )
+
+        print(
+            f"Grab Price: {alert['price']}"
+        )
+
+        print(
+            f"Time: {alert['time']}"
         )
 
 
@@ -78,11 +126,19 @@ def run_engine():
                     f"✅ {len(df)} candles received"
                 )
 
+                check_liquidity(
+                    symbol,
+                    timeframe,
+                    df
+                )
+
             except Exception as e:
 
                 print(
                     f"⚠️ Error: {e}"
                 )
+
+            time.sleep(2)
 
 
 if __name__ == "__main__":
