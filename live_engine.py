@@ -19,6 +19,11 @@ from crt import (
     format_crt_alert
 )
 
+from fvg import (
+    detect_fvg,
+    format_fvg_alert
+)
+
 from telegram_alert import send_alert
 
 
@@ -75,18 +80,11 @@ def send_liquidity_alert(
     )
 
     try:
-
         send_alert(message)
-
-        print(
-            "📲 Telegram liquidity alert sent"
-        )
+        print("📲 Telegram liquidity alert sent")
 
     except Exception as e:
-
-        print(
-            f"⚠️ Telegram error: {e}"
-        )
+        print(f"⚠️ Telegram error: {e}")
 
 
 def send_session_alert(
@@ -105,18 +103,11 @@ def send_session_alert(
     )
 
     try:
-
         send_alert(message)
-
-        print(
-            "📲 Telegram session alert sent"
-        )
+        print("📲 Telegram session alert sent")
 
     except Exception as e:
-
-        print(
-            f"⚠️ Telegram error: {e}"
-        )
+        print(f"⚠️ Telegram error: {e}")
 
 
 def send_crt_alert(
@@ -132,18 +123,31 @@ def send_crt_alert(
     )
 
     try:
-
         send_alert(message)
-
-        print(
-            "📲 Telegram CRT alert sent"
-        )
+        print("📲 Telegram CRT alert sent")
 
     except Exception as e:
+        print(f"⚠️ Telegram error: {e}")
 
-        print(
-            f"⚠️ Telegram error: {e}"
-        )
+
+def send_fvg_alert(
+    symbol,
+    timeframe,
+    fvg
+):
+
+    message = format_fvg_alert(
+        symbol,
+        timeframe,
+        fvg
+    )
+
+    try:
+        send_alert(message)
+        print("📲 Telegram FVG alert sent")
+
+    except Exception as e:
+        print(f"⚠️ Telegram error: {e}")
 
 
 def check_liquidity(
@@ -161,15 +165,11 @@ def check_liquidity(
             f"{symbol} | {timeframe}"
         )
 
+        return
+
     for alert in alerts:
 
-        print(
-            f"\n🚨 LIQUIDITY GRAB"
-        )
-
-        print(
-            f"{symbol} | {timeframe}"
-        )
+        print("\n🚨 LIQUIDITY GRAB")
 
         send_liquidity_alert(
             symbol,
@@ -203,10 +203,6 @@ def check_session_liquidity(
                 "\n🚨 SESSION LIQUIDITY"
             )
 
-            print(
-                f"{symbol} | {timeframe}"
-            )
-
             send_session_alert(
                 symbol,
                 timeframe,
@@ -237,29 +233,54 @@ def check_crt(
             "\n🚨 CRT DETECTED"
         )
 
-        print(
-            f"{symbol} | {timeframe}"
-        )
-
-        print(
-            f"Type: {alert['type']}"
-        )
-
-        print(
-            f"Confirmation: "
-            f"{alert['confirmation_close']}"
-        )
-
-        print(
-            f"Entry Reference: "
-            f"{alert['entry_price']}"
-        )
-
         send_crt_alert(
             symbol,
             timeframe,
             alert
         )
+
+
+def check_fvg(
+    symbol,
+    timeframe,
+    df
+):
+
+    fvgs = detect_fvg(df)
+
+    if not fvgs:
+
+        print(
+            f"🟩 No FVG | "
+            f"{symbol} | {timeframe}"
+        )
+
+        return
+
+    # Latest FVG
+    latest_fvg = fvgs[-1]
+
+    print(
+        "\n🚨 FVG DETECTED"
+    )
+
+    print(
+        f"Type: {latest_fvg['type']}"
+    )
+
+    print(
+        f"Top: {latest_fvg['top']}"
+    )
+
+    print(
+        f"Bottom: {latest_fvg['bottom']}"
+    )
+
+    send_fvg_alert(
+        symbol,
+        timeframe,
+        latest_fvg
+    )
 
 
 def run_engine():
@@ -313,6 +334,13 @@ def run_engine():
 
                 # 3️⃣ CRT
                 check_crt(
+                    symbol,
+                    timeframe,
+                    df
+                )
+
+                # 4️⃣ FVG
+                check_fvg(
                     symbol,
                     timeframe,
                     df
