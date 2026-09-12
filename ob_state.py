@@ -1,12 +1,10 @@
 import json
 from pathlib import Path
 
-
 STATE_FILE = Path("ob_state.json")
 
 
 def load_state():
-
     if not STATE_FILE.exists():
         return {}
 
@@ -23,7 +21,6 @@ def load_state():
 
 
 def save_state(state):
-
     with open(
         STATE_FILE,
         "w",
@@ -36,13 +33,11 @@ def save_state(state):
         )
 
 
-# Compatibility function
-# Existing test_ob_state.py uses this.
-def get_ob_id(
-    symbol,
-    timeframe,
-    ob
-):
+# --------------------------------
+# OLD / COMPATIBILITY OB ID
+# --------------------------------
+
+def get_ob_id(symbol, timeframe, ob):
 
     return (
         f"{symbol}_"
@@ -52,16 +47,21 @@ def get_ob_id(
     )
 
 
-def get_ob_key(
-    symbol,
-    timeframe
-):
+# --------------------------------
+# SYMBOL + TIMEFRAME KEY
+# --------------------------------
+
+def get_ob_key(symbol, timeframe):
 
     return (
         f"{symbol}_"
         f"{timeframe}"
     )
 
+
+# --------------------------------
+# REGISTER CURRENT OB
+# --------------------------------
 
 def register_current_ob(
     symbol,
@@ -76,14 +76,15 @@ def register_current_ob(
         timeframe
     )
 
-    new_ob_id = (
-        f"{ob['type']}_"
-        f"{ob['time']}"
+    new_ob_id = get_ob_id(
+        symbol,
+        timeframe,
+        ob
     )
 
     current = state.get(key)
 
-    # New OB replaces old OB
+    # New OB → replace old OB
     if (
         current is None
         or current.get("ob_id") != new_ob_id
@@ -105,17 +106,54 @@ def register_current_ob(
     return key
 
 
-def is_already_tapped(
-    symbol,
-    timeframe
-):
+# --------------------------------
+# FIND STATE BY OLD OB ID
+# --------------------------------
+
+def _find_key_by_ob_id(ob_id):
 
     state = load_state()
 
-    key = get_ob_key(
-        symbol,
-        timeframe
-    )
+    for key, value in state.items():
+
+        if value.get("ob_id") == ob_id:
+            return key
+
+    return None
+
+
+# --------------------------------
+# CHECK TAPPED
+# --------------------------------
+
+def is_already_tapped(*args):
+
+    state = load_state()
+
+    # New format:
+    # is_already_tapped(symbol, timeframe)
+    if len(args) == 2:
+
+        symbol = args[0]
+        timeframe = args[1]
+
+        key = get_ob_key(
+            symbol,
+            timeframe
+        )
+
+    # Old format:
+    # is_already_tapped(ob_id)
+    elif len(args) == 1:
+
+        ob_id = args[0]
+
+        key = _find_key_by_ob_id(
+            ob_id
+        )
+
+    else:
+        return False
 
     if key not in state:
         return False
@@ -126,17 +164,36 @@ def is_already_tapped(
     )
 
 
-def mark_tapped(
-    symbol,
-    timeframe
-):
+# --------------------------------
+# MARK TAPPED
+# --------------------------------
+
+def mark_tapped(*args):
 
     state = load_state()
 
-    key = get_ob_key(
-        symbol,
-        timeframe
-    )
+    # New format
+    if len(args) == 2:
+
+        symbol = args[0]
+        timeframe = args[1]
+
+        key = get_ob_key(
+            symbol,
+            timeframe
+        )
+
+    # Old format
+    elif len(args) == 1:
+
+        ob_id = args[0]
+
+        key = _find_key_by_ob_id(
+            ob_id
+        )
+
+    else:
+        return
 
     if key not in state:
         return
@@ -145,6 +202,10 @@ def mark_tapped(
 
     save_state(state)
 
+
+# --------------------------------
+# FIRST TAP CHECK
+# --------------------------------
 
 def can_alert_first_tap(
     symbol,
@@ -164,12 +225,18 @@ def can_alert_first_tap(
     )
 
 
-def confirm_first_tap(
-    symbol,
-    timeframe
-):
+# --------------------------------
+# CONFIRM FIRST TAP
+# --------------------------------
 
-    mark_tapped(
-        symbol,
-        timeframe
-    )
+def confirm_first_tap(*args):
+
+    # Supports both:
+    #
+    # confirm_first_tap(ob_id)
+    #
+    # AND
+    #
+    # confirm_first_tap(symbol, timeframe)
+
+    mark_tapped(*args)
