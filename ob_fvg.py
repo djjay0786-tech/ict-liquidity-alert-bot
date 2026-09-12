@@ -1,5 +1,3 @@
-import pandas as pd
-
 from fvg import detect_fvg
 from order_block import detect_order_blocks
 
@@ -15,31 +13,53 @@ def select_ob_near_fvg(df):
     if not fvgs or not obs:
         return None
 
-    # Last FVG
+    # Latest FVG
     last_fvg = fvgs[-1]
 
     matching_obs = []
 
     for ob in obs:
 
-        # Same direction only
+        # ==========================================
+        # SAME DIRECTION ONLY
+        # ==========================================
+
         if last_fvg["type"] == "BULLISH FVG":
+
             if ob["type"] != "BULLISH OB":
                 continue
 
         elif last_fvg["type"] == "BEARISH FVG":
+
             if ob["type"] != "BEARISH OB":
                 continue
 
-        # OB center
+        # ==========================================
+        # OB MUST FORM BEFORE FVG
+        # ==========================================
+
+        if ob["time"] >= last_fvg["time"]:
+            continue
+
+        # ==========================================
+        # OB CENTER
+        # ==========================================
+
         ob_center = (
             ob["high"] + ob["low"]
         ) / 2
 
-        # FVG center
+        # ==========================================
+        # FVG CENTER
+        # ==========================================
+
         fvg_center = (
             last_fvg["top"] + last_fvg["bottom"]
         ) / 2
+
+        # ==========================================
+        # DISTANCE
+        # ==========================================
 
         distance = abs(
             ob_center - fvg_center
@@ -53,7 +73,10 @@ def select_ob_near_fvg(df):
     if not matching_obs:
         return None
 
-    # Closest matching OB
+    # ==========================================
+    # CLOSEST VALID OB
+    # ==========================================
+
     selected = min(
         matching_obs,
         key=lambda x: x["distance"]
@@ -82,6 +105,7 @@ def format_ob_fvg_selection(
 
     message = (
         f"{emoji} OB + FVG SETUP\n\n"
+
         f"Symbol: {symbol}\n"
         f"Timeframe: {timeframe}\n\n"
 
