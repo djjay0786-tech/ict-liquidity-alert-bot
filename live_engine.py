@@ -48,9 +48,11 @@ SYMBOLS = [
     "DXY"
 ]
 
+
 TIMEFRAMES = [
     "1h",
-    "4h"
+    "4h",
+    "1day"
 ]
 
 
@@ -383,7 +385,6 @@ def check_ob_first_tap(
 
     ob = setup["ob"]
 
-    # Check state first
     can_alert = can_alert_first_tap(
         symbol,
         timeframe,
@@ -399,9 +400,6 @@ def check_ob_first_tap(
 
         return
 
-    # IMPORTANT:
-    # Latest candle must be the FIRST
-    # candle to touch this OB.
     first_tap_now = (
         is_latest_candle_first_tap(
             df,
@@ -436,7 +434,6 @@ def check_ob_first_tap(
         "OB First Tap"
     )
 
-    # Prevent another alert
     confirm_first_tap(
         symbol,
         timeframe
