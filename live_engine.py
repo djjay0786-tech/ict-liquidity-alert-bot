@@ -26,6 +26,11 @@ from session_alerts import (
     format_session_event
 )
 
+from session_summary import (
+    calculate_session_summary,
+    format_combined_session_summary
+)
+
 from crt import (
     detect_crt,
     format_crt_alert
@@ -273,7 +278,7 @@ def check_session_open_close():
             "open/close event"
         )
 
-        return
+        return []
 
     for event in events:
 
@@ -324,6 +329,149 @@ def check_session_open_close():
             event
         )
 
+    return events
+
+
+# ==========================================
+# SESSION CLOSE SUMMARY
+# EUR/USD + GBP/USD + DXY
+# ==========================================
+
+def check_session_summaries(
+    session_events,
+    h1_market_data
+):
+
+    if not session_events:
+        return
+
+    for event in session_events:
+
+        event_type = str(
+            event.get(
+                "event",
+                ""
+            )
+        ).upper()
+
+        if "CLOSE" not in event_type:
+            continue
+
+        session = event.get(
+            "session",
+            ""
+        )
+
+        if session not in [
+            "ASIA",
+            "LONDON",
+            "NEW YORK"
+        ]:
+            continue
+
+        event_date = event.get(
+            "event_date",
+            ""
+        )
+
+        scheduled_time = event.get(
+            "scheduled_time",
+            ""
+        )
+
+        stable_event_time = (
+            f"{event_date}|"
+            f"{scheduled_time}"
+        )
+
+        summaries = []
+
+        for symbol in SYMBOLS:
+
+            df = h1_market_data.get(
+                symbol
+            )
+
+            if (
+                df is None
+                or df.empty
+            ):
+
+                print(
+                    f"⚠️ No H1 data for "
+                    f"{symbol} session summary"
+                )
+
+                continue
+
+            try:
+
+                summary = (
+                    calculate_session_summary(
+                        symbol=symbol,
+                        session=session,
+                        df=df
+                    )
+                )
+
+                if summary is not None:
+
+                    summaries.append(
+                        summary
+                    )
+
+            except Exception as e:
+
+                print(
+                    f"⚠️ Session summary "
+                    f"error | {symbol} | "
+                    f"{session}: {e}"
+                )
+
+        if not summaries:
+
+            print(
+                f"⚠️ No summary data | "
+                f"{session}"
+            )
+
+            continue
+
+        message = (
+            format_combined_session_summary(
+                session,
+                summaries
+            )
+        )
+
+        alert_id = make_alert_id(
+            "SESSION_SUMMARY",
+            session,
+            "H1",
+            stable_event_time,
+            "COMBINED"
+        )
+
+        print(
+            f"\n📊 {session} "
+            f"SESSION SUMMARY"
+        )
+
+        send_once(
+            alert_id,
+            message,
+            "Session Summary",
+            {
+                "session": session,
+                "event_date": event_date,
+                "scheduled_time": scheduled_time,
+                "symbols": [
+                    item["symbol"]
+                    for item in summaries
+                ]
+            }
+        )
+
 
 # ==========================================
 # PDH / PDL
@@ -363,13 +511,6 @@ def check_liquidity(
             event_time,
             timeframe
         ):
-
-            print(
-                f"🕰️ Old PDH/PDL "
-                f"ignored | "
-                f"{symbol}"
-            )
-
             continue
 
         alert_id = make_alert_id(
@@ -391,11 +532,6 @@ def check_liquidity(
         message += (
             f"\nTimeframe: "
             f"{timeframe}"
-        )
-
-        print(
-            "\n🚨 PDH/PDL "
-            "LIQUIDITY"
         )
 
         send_once(
@@ -427,12 +563,6 @@ def check_daily_liquidity(
     )
 
     if not alerts:
-
-        print(
-            f"💧 No DH/DL sweep | "
-            f"{symbol}"
-        )
-
         return
 
     for alert in alerts:
@@ -446,13 +576,6 @@ def check_daily_liquidity(
             event_time,
             timeframe
         ):
-
-            print(
-                f"🕰️ Old DH/DL "
-                f"ignored | "
-                f"{symbol}"
-            )
-
             continue
 
         alert_id = make_alert_id(
@@ -474,11 +597,6 @@ def check_daily_liquidity(
         message += (
             f"\nTimeframe: "
             f"{timeframe}"
-        )
-
-        print(
-            "\n🚨 DH/DL "
-            "LIQUIDITY"
         )
 
         send_once(
@@ -516,13 +634,6 @@ def check_session_liquidity(
         )
 
         if not alerts:
-
-            print(
-                f"💧 No {session} "
-                f"liquidity sweep | "
-                f"{symbol}"
-            )
-
             continue
 
         for alert in alerts:
@@ -536,7 +647,6 @@ def check_session_liquidity(
                 event_time,
                 timeframe
             ):
-
                 continue
 
             alert_id = make_alert_id(
@@ -604,7 +714,6 @@ def check_crt(
             confirmation_time,
             timeframe
         ):
-
             continue
 
         alert_id = make_alert_id(
@@ -858,20 +967,24 @@ def check_high_confluence(
     liquidity_alerts = []
 
     try:
+
         liquidity_alerts.extend(
             detect_liquidity_grab(
                 df
             ) or []
         )
+
     except Exception:
         pass
 
     try:
+
         liquidity_alerts.extend(
             detect_daily_liquidity_grab(
                 df
             ) or []
         )
+
     except Exception:
         pass
 
@@ -897,13 +1010,11 @@ def check_high_confluence(
 
     for alert in liquidity_alerts:
 
-        event_time = alert.get(
-            "time",
-            ""
-        )
-
         if not is_fresh(
-            event_time,
+            alert.get(
+                "time",
+                ""
+            ),
             timeframe
         ):
             continue
@@ -914,6 +1025,7 @@ def check_high_confluence(
             )
             is not None
         ):
+
             fresh_liquidity.append(
                 alert
             )
@@ -931,15 +1043,11 @@ def check_high_confluence(
 
     for alert in crt_alerts:
 
-        confirmation_time = (
+        if not is_fresh(
             alert.get(
                 "second_candle_time",
                 ""
-            )
-        )
-
-        if not is_fresh(
-            confirmation_time,
+            ),
             timeframe
         ):
             continue
@@ -950,6 +1058,7 @@ def check_high_confluence(
             )
             is not None
         ):
+
             fresh_crt.append(
                 alert
             )
@@ -967,14 +1076,16 @@ def check_high_confluence(
             fresh_crt
         ):
 
-            candidate = build_confluence(
-                symbol=symbol,
-                timeframe=timeframe,
-                liquidity_alert=liquidity_alert,
-                crt_alert=crt_alert,
-                fvg=fvg,
-                ob=ob,
-                ob_first_tap=True
+            candidate = (
+                build_confluence(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    liquidity_alert=liquidity_alert,
+                    crt_alert=crt_alert,
+                    fvg=fvg,
+                    ob=ob,
+                    ob_first_tap=True
+                )
             )
 
             if candidate is not None:
@@ -1012,12 +1123,6 @@ def check_high_confluence(
         )
     )
 
-    print(
-        "\n🔥 HIGH CONFLUENCE "
-        f"{final_setup['trade']} | "
-        f"{symbol}"
-    )
-
     send_once(
         alert_id,
         message,
@@ -1028,7 +1133,6 @@ def check_high_confluence(
 
 # ==========================================
 # RANKING SNAPSHOT
-# H1 ONLY
 # ==========================================
 
 def build_ranking_snapshot(
@@ -1081,14 +1185,12 @@ def build_ranking_snapshot(
 
     for alert in liquidity_alerts:
 
-        if (
-            not is_fresh(
-                alert.get(
-                    "time",
-                    ""
-                ),
-                "H1"
-            )
+        if not is_fresh(
+            alert.get(
+                "time",
+                ""
+            ),
+            "H1"
         ):
             continue
 
@@ -1106,6 +1208,7 @@ def build_ranking_snapshot(
     liquidity = None
 
     if valid_liquidity:
+
         liquidity = (
             valid_liquidity[-1]
         )
@@ -1120,14 +1223,12 @@ def build_ranking_snapshot(
 
     for alert in crt_alerts:
 
-        if (
-            not is_fresh(
-                alert.get(
-                    "second_candle_time",
-                    ""
-                ),
-                "H1"
-            )
+        if not is_fresh(
+            alert.get(
+                "second_candle_time",
+                ""
+            ),
+            "H1"
         ):
             continue
 
@@ -1145,6 +1246,7 @@ def build_ranking_snapshot(
     crt = None
 
     if valid_crt:
+
         crt = valid_crt[-1]
 
     setup = select_ob_near_fvg(
@@ -1164,13 +1266,11 @@ def build_ranking_snapshot(
     fvg = setup["fvg"]
     ob = setup["ob"]
 
-    fvg_time = fvg.get(
-        "time",
-        ""
-    )
-
     if not is_fresh(
-        fvg_time,
+        fvg.get(
+            "time",
+            ""
+        ),
         "H1"
     ):
 
@@ -1199,7 +1299,7 @@ def build_ranking_snapshot(
 
 
 # ==========================================
-# SEND MARKET RANKING
+# MARKET RANKING
 # ==========================================
 
 def send_market_ranking(
@@ -1286,9 +1386,13 @@ def run_engine():
         "=" * 60
     )
 
-    check_session_open_close()
+    session_events = (
+        check_session_open_close()
+    )
 
     ranking_snapshots = {}
+
+    h1_market_data = {}
 
     for symbol in SYMBOLS:
 
@@ -1330,6 +1434,12 @@ def run_engine():
                     f"✅ {len(df)} "
                     f"candles received"
                 )
+
+                if timeframe == "H1":
+
+                    h1_market_data[
+                        symbol
+                    ] = df
 
                 check_liquidity(
                     symbol,
@@ -1398,6 +1508,31 @@ def run_engine():
                 )
 
             time.sleep(3)
+
+    print(
+        "\n" + "=" * 60
+    )
+
+    print(
+        "📊 CHECKING SESSION SUMMARIES"
+    )
+
+    print(
+        "=" * 60
+    )
+
+    try:
+
+        check_session_summaries(
+            session_events,
+            h1_market_data
+        )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ Session summary error: {e}"
+        )
 
     print(
         "\n" + "=" * 60
