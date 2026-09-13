@@ -66,6 +66,14 @@ from confluence import (
     get_direction_from_crt
 )
 
+from ranking import (
+    rank_instruments
+)
+
+from ranking_alert import (
+    process_ranking_alert
+)
+
 
 SYMBOLS = [
     "EUR/USD",
@@ -483,7 +491,6 @@ def check_daily_liquidity(
 
 # ==========================================
 # SESSION LIQUIDITY
-# ASIA + LONDON + NEW YORK
 # ==========================================
 
 def check_session_liquidity(
@@ -530,12 +537,6 @@ def check_session_liquidity(
                 timeframe
             ):
 
-                print(
-                    f"🕰️ Old {session} "
-                    f"liquidity ignored | "
-                    f"{symbol}"
-                )
-
                 continue
 
             alert_id = make_alert_id(
@@ -560,11 +561,6 @@ def check_session_liquidity(
             message += (
                 f"\nTimeframe: "
                 f"{timeframe}"
-            )
-
-            print(
-                f"\n🚨 {session} "
-                f"LIQUIDITY"
             )
 
             send_once(
@@ -608,12 +604,6 @@ def check_crt(
             confirmation_time,
             timeframe
         ):
-
-            print(
-                f"🕰️ Old CRT ignored | "
-                f"{symbol} | "
-                f"{timeframe}"
-            )
 
             continue
 
@@ -672,13 +662,6 @@ def check_fvg(
         fvg_time,
         timeframe
     ):
-
-        print(
-            f"🕰️ Old FVG ignored | "
-            f"{symbol} | "
-            f"{timeframe}"
-        )
-
         return
 
     alert_id = make_alert_id(
@@ -735,14 +718,6 @@ def check_ob_fvg(
         fvg_time,
         timeframe
     ):
-
-        print(
-            f"🕰️ Old OB+FVG "
-            f"ignored | "
-            f"{symbol} | "
-            f"{timeframe}"
-        )
-
         return
 
     alert_id = make_alert_id(
@@ -817,13 +792,6 @@ def check_ob_first_tap(
         candle_time,
         timeframe
     ):
-
-        print(
-            f"🕰️ Old OB tap ignored | "
-            f"{symbol} | "
-            f"{timeframe}"
-        )
-
         return
 
     message = create_tap_alert(
@@ -865,12 +833,6 @@ def check_high_confluence(
     )
 
     if setup is None:
-
-        print(
-            f"🧩 No OB+FVG for "
-            f"confluence | {symbol}"
-        )
-
         return
 
     ob = setup["ob"]
@@ -885,71 +847,33 @@ def check_high_confluence(
         fvg_time,
         timeframe
     ):
-
-        print(
-            f"🕰️ Confluence FVG old | "
-            f"{symbol}"
-        )
-
         return
 
     if not is_latest_candle_first_tap(
         df,
         ob
     ):
-
-        print(
-            f"🧩 No current OB first tap | "
-            f"{symbol}"
-        )
-
         return
-
-    # --------------------------------------
-    # COLLECT FRESH LIQUIDITY EVENTS
-    # --------------------------------------
 
     liquidity_alerts = []
 
     try:
-
-        pdh_pdl_alerts = (
+        liquidity_alerts.extend(
             detect_liquidity_grab(
                 df
-            )
-            or []
+            ) or []
         )
-
-        liquidity_alerts.extend(
-            pdh_pdl_alerts
-        )
-
-    except Exception as e:
-
-        print(
-            f"⚠️ Confluence PDH/PDL "
-            f"error: {e}"
-        )
+    except Exception:
+        pass
 
     try:
-
-        daily_alerts = (
+        liquidity_alerts.extend(
             detect_daily_liquidity_grab(
                 df
-            )
-            or []
+            ) or []
         )
-
-        liquidity_alerts.extend(
-            daily_alerts
-        )
-
-    except Exception as e:
-
-        print(
-            f"⚠️ Confluence DH/DL "
-            f"error: {e}"
-        )
+    except Exception:
+        pass
 
     for session in [
         "ASIA",
@@ -959,24 +883,15 @@ def check_high_confluence(
 
         try:
 
-            session_alerts = (
+            liquidity_alerts.extend(
                 detect_session_liquidity(
                     df,
                     session
-                )
-                or []
+                ) or []
             )
 
-            liquidity_alerts.extend(
-                session_alerts
-            )
-
-        except Exception as e:
-
-            print(
-                f"⚠️ Confluence {session} "
-                f"liquidity error: {e}"
-            )
+        except Exception:
+            pass
 
     fresh_liquidity = []
 
@@ -993,37 +908,23 @@ def check_high_confluence(
         ):
             continue
 
-        direction = (
+        if (
             get_direction_from_liquidity(
                 alert
             )
-        )
-
-        if direction is None:
-            continue
-
-        fresh_liquidity.append(
-            alert
-        )
+            is not None
+        ):
+            fresh_liquidity.append(
+                alert
+            )
 
     if not fresh_liquidity:
-
-        print(
-            f"🧩 No fresh liquidity "
-            f"for confluence | {symbol}"
-        )
-
         return
-
-    # --------------------------------------
-    # COLLECT FRESH CRT EVENTS
-    # --------------------------------------
 
     crt_alerts = (
         detect_crt(
             df
-        )
-        or []
+        ) or []
     )
 
     fresh_crt = []
@@ -1043,31 +944,18 @@ def check_high_confluence(
         ):
             continue
 
-        direction = (
+        if (
             get_direction_from_crt(
                 alert
             )
-        )
-
-        if direction is None:
-            continue
-
-        fresh_crt.append(
-            alert
-        )
+            is not None
+        ):
+            fresh_crt.append(
+                alert
+            )
 
     if not fresh_crt:
-
-        print(
-            f"🧩 No fresh CRT "
-            f"for confluence | {symbol}"
-        )
-
         return
-
-    # --------------------------------------
-    # FIND SAME-DIRECTION COMBINATION
-    # --------------------------------------
 
     final_setup = None
 
@@ -1098,12 +986,6 @@ def check_high_confluence(
             break
 
     if final_setup is None:
-
-        print(
-            f"🧩 Confluence directions "
-            f"do not match | {symbol}"
-        )
-
         return
 
     candle = df.iloc[-1]
@@ -1145,6 +1027,248 @@ def check_high_confluence(
 
 
 # ==========================================
+# RANKING SNAPSHOT
+# H1 ONLY
+# ==========================================
+
+def build_ranking_snapshot(
+    df
+):
+
+    liquidity_alerts = []
+
+    try:
+
+        liquidity_alerts.extend(
+            detect_liquidity_grab(
+                df
+            ) or []
+        )
+
+    except Exception:
+        pass
+
+    try:
+
+        liquidity_alerts.extend(
+            detect_daily_liquidity_grab(
+                df
+            ) or []
+        )
+
+    except Exception:
+        pass
+
+    for session in [
+        "ASIA",
+        "LONDON",
+        "NEW YORK"
+    ]:
+
+        try:
+
+            liquidity_alerts.extend(
+                detect_session_liquidity(
+                    df,
+                    session
+                ) or []
+            )
+
+        except Exception:
+            pass
+
+    valid_liquidity = []
+
+    for alert in liquidity_alerts:
+
+        if (
+            not is_fresh(
+                alert.get(
+                    "time",
+                    ""
+                ),
+                "H1"
+            )
+        ):
+            continue
+
+        if (
+            get_direction_from_liquidity(
+                alert
+            )
+            is not None
+        ):
+
+            valid_liquidity.append(
+                alert
+            )
+
+    liquidity = None
+
+    if valid_liquidity:
+        liquidity = (
+            valid_liquidity[-1]
+        )
+
+    crt_alerts = (
+        detect_crt(
+            df
+        ) or []
+    )
+
+    valid_crt = []
+
+    for alert in crt_alerts:
+
+        if (
+            not is_fresh(
+                alert.get(
+                    "second_candle_time",
+                    ""
+                ),
+                "H1"
+            )
+        ):
+            continue
+
+        if (
+            get_direction_from_crt(
+                alert
+            )
+            is not None
+        ):
+
+            valid_crt.append(
+                alert
+            )
+
+    crt = None
+
+    if valid_crt:
+        crt = valid_crt[-1]
+
+    setup = select_ob_near_fvg(
+        df
+    )
+
+    if setup is None:
+
+        return {
+            "liquidity": liquidity,
+            "crt": crt,
+            "fvg": None,
+            "ob": None,
+            "ob_first_tap": False
+        }
+
+    fvg = setup["fvg"]
+    ob = setup["ob"]
+
+    fvg_time = fvg.get(
+        "time",
+        ""
+    )
+
+    if not is_fresh(
+        fvg_time,
+        "H1"
+    ):
+
+        return {
+            "liquidity": liquidity,
+            "crt": crt,
+            "fvg": None,
+            "ob": None,
+            "ob_first_tap": False
+        }
+
+    first_tap = (
+        is_latest_candle_first_tap(
+            df,
+            ob
+        )
+    )
+
+    return {
+        "liquidity": liquidity,
+        "crt": crt,
+        "fvg": fvg,
+        "ob": ob,
+        "ob_first_tap": first_tap
+    }
+
+
+# ==========================================
+# SEND MARKET RANKING
+# ==========================================
+
+def send_market_ranking(
+    snapshots
+):
+
+    missing = [
+        symbol
+        for symbol in SYMBOLS
+        if symbol not in snapshots
+    ]
+
+    if missing:
+
+        print(
+            "⚠️ Ranking skipped. "
+            "Missing H1 data: "
+            + ", ".join(missing)
+        )
+
+        return
+
+    rankings = rank_instruments(
+        snapshots
+    )
+
+    ranking_cycle = (
+        datetime.now(
+            UTC
+        )
+        .replace(
+            minute=0,
+            second=0,
+            microsecond=0
+        )
+        .isoformat()
+    )
+
+    def ranking_sender(
+        message
+    ):
+
+        sent = send_message(
+            message,
+            "Market Ranking"
+        )
+
+        if not sent:
+
+            raise Exception(
+                "Ranking Telegram "
+                "send failed"
+            )
+
+    result = (
+        process_ranking_alert(
+            rankings=rankings,
+            candle_time=ranking_cycle,
+            send_function=ranking_sender
+        )
+    )
+
+    print(
+        "🏆 Ranking result: "
+        f"{result.get('reason')}"
+    )
+
+
+# ==========================================
 # MAIN ENGINE
 # ==========================================
 
@@ -1163,6 +1287,8 @@ def run_engine():
     )
 
     check_session_open_close()
+
+    ranking_snapshots = {}
 
     for symbol in SYMBOLS:
 
@@ -1241,13 +1367,21 @@ def run_engine():
                     df
                 )
 
-                # Confluence BEFORE OB state
-                # is confirmed as tapped.
                 check_high_confluence(
                     symbol,
                     timeframe,
                     df
                 )
+
+                if timeframe == "H1":
+
+                    ranking_snapshots[
+                        symbol
+                    ] = (
+                        build_ranking_snapshot(
+                            df
+                        )
+                    )
 
                 check_ob_first_tap(
                     symbol,
@@ -1264,6 +1398,30 @@ def run_engine():
                 )
 
             time.sleep(3)
+
+    print(
+        "\n" + "=" * 60
+    )
+
+    print(
+        "🏆 CHECKING MARKET RANKING"
+    )
+
+    print(
+        "=" * 60
+    )
+
+    try:
+
+        send_market_ranking(
+            ranking_snapshots
+        )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ Ranking error: {e}"
+        )
 
 
 if __name__ == "__main__":
