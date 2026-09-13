@@ -1,20 +1,24 @@
 import pandas as pd
 
 
-def is_price_in_ob(price, ob):
+def is_price_in_ob(
+    price,
+    ob
+):
 
     return (
         float(ob["low"])
-        <= float(price)
-        <= float(ob["high"])
+        <=
+        float(price)
+        <=
+        float(ob["high"])
     )
 
 
-def detect_first_tap(candle, ob):
-    """
-    Check whether a candle touches
-    the Order Block zone.
-    """
+def detect_first_tap(
+    candle,
+    ob
+):
 
     if ob is None:
         return False
@@ -35,51 +39,89 @@ def detect_first_tap(candle, ob):
         ob["low"]
     )
 
-    touched = (
+    return (
         candle_low <= ob_high
         and
         candle_high >= ob_low
     )
 
-    return touched
 
+def get_tap_start_index(
+    ob
+):
 
-def get_first_tap_after_ob(df, ob):
     """
-    Find the FIRST candle that touched
-    the OB AFTER the OB was created.
-
-    This prevents candles before the OB
-    from being counted as a first tap.
+    First legitimate tap can only
+    happen AFTER the OB confirmation
+    / displacement candle.
     """
 
-    if df is None or df.empty:
-        return None
+    if (
+        "confirmation_index"
+        in ob
+    ):
 
-    if ob is None:
-        return None
-
-    ob_time = pd.to_datetime(
-        ob["time"],
-        utc=True
-    )
-
-    for _, candle in df.iterrows():
-
-        candle_time = pd.to_datetime(
-            candle["datetime"],
-            utc=True
+        return (
+            int(
+                ob[
+                    "confirmation_index"
+                ]
+            )
+            + 1
         )
 
-        # Ignore OB creation candle
-        # and all older candles
-        if candle_time <= ob_time:
-            continue
+    # Compatibility with older OB data.
+    return (
+        int(
+            ob.get(
+                "index",
+                0
+            )
+        )
+        + 2
+    )
+
+
+def get_first_tap_after_ob(
+    df,
+    ob
+):
+
+    """
+    Find first real retracement/tap.
+
+    OB candle is ignored.
+    Confirmation/displacement candle
+    is also ignored.
+    """
+
+    if (
+        df is None
+        or df.empty
+        or ob is None
+    ):
+        return None
+
+    start_index = (
+        get_tap_start_index(
+            ob
+        )
+    )
+
+    if start_index >= len(df):
+        return None
+
+    future = df.iloc[
+        start_index:
+    ]
+
+    for _, candle in future.iterrows():
 
         if detect_first_tap(
             candle,
             ob
         ):
+
             return candle
 
     return None
@@ -90,18 +132,12 @@ def has_historical_tap(
     ob,
     latest_candle_only=False
 ):
-    """
-    Check whether the selected OB was
-    already touched after its creation.
 
-    If the first touch happened before
-    the latest candle, then the OB is
-    already historically tapped.
-    """
-
-    first_tap = get_first_tap_after_ob(
-        df,
-        ob
+    first_tap = (
+        get_first_tap_after_ob(
+            df,
+            ob
+        )
     )
 
     if first_tap is None:
@@ -111,50 +147,73 @@ def has_historical_tap(
         return True
 
     latest_time = pd.to_datetime(
-        df.iloc[-1]["datetime"],
+        df.iloc[-1][
+            "datetime"
+        ],
         utc=True
     )
 
     tap_time = pd.to_datetime(
-        first_tap["datetime"],
+        first_tap[
+            "datetime"
+        ],
         utc=True
     )
 
-    return tap_time < latest_time
+    return (
+        tap_time
+        <
+        latest_time
+    )
 
 
 def is_latest_candle_first_tap(
     df,
     ob
 ):
+
     """
-    True ONLY when the latest candle
-    is the first candle to touch the OB
-    after the OB was created.
+    True only when the latest candle
+    is the first REAL retracement
+    into the OB after confirmation.
     """
 
-    if df is None or df.empty:
+    if (
+        df is None
+        or df.empty
+        or ob is None
+    ):
         return False
 
-    first_tap = get_first_tap_after_ob(
-        df,
-        ob
+    first_tap = (
+        get_first_tap_after_ob(
+            df,
+            ob
+        )
     )
 
     if first_tap is None:
         return False
 
     latest_time = pd.to_datetime(
-        df.iloc[-1]["datetime"],
+        df.iloc[-1][
+            "datetime"
+        ],
         utc=True
     )
 
     tap_time = pd.to_datetime(
-        first_tap["datetime"],
+        first_tap[
+            "datetime"
+        ],
         utc=True
     )
 
-    return tap_time == latest_time
+    return (
+        tap_time
+        ==
+        latest_time
+    )
 
 
 def create_tap_alert(
@@ -164,20 +223,39 @@ def create_tap_alert(
     candle
 ):
 
-    if ob["type"] == "BULLISH OB":
+    if (
+        ob["type"]
+        ==
+        "BULLISH OB"
+    ):
+
         emoji = "🟢"
+
     else:
+
         emoji = "🔴"
 
     return (
         f"{emoji} ORDER BLOCK FIRST TAP\n\n"
-        f"Symbol: {symbol}\n"
-        f"Timeframe: {timeframe}\n\n"
-        f"Type: {ob['type']}\n"
-        f"OB High: {float(ob['high']):.5f}\n"
-        f"OB Low: {float(ob['low']):.5f}\n\n"
+
+        f"Symbol: "
+        f"{symbol}\n"
+
+        f"Timeframe: "
+        f"{timeframe}\n\n"
+
+        f"Type: "
+        f"{ob['type']}\n"
+
+        f"OB High: "
+        f"{float(ob['high']):.5f}\n"
+
+        f"OB Low: "
+        f"{float(ob['low']):.5f}\n\n"
+
         f"Tap Price: "
         f"{float(candle['close']):.5f}\n"
+
         f"Tap Time: "
         f"{candle['datetime']}"
     )
