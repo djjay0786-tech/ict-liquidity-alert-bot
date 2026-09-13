@@ -1,6 +1,10 @@
 import os
 import requests
 
+from discord_alert import (
+    send_discord_message
+)
+
 
 BOT_TOKEN = os.getenv(
     "TELEGRAM_BOT_TOKEN"
@@ -46,6 +50,7 @@ def split_message(message):
         ):
 
             if current:
+
                 parts.append(
                     current.rstrip()
                 )
@@ -151,8 +156,44 @@ def send_to_chat(
     return results
 
 
-def send_telegram_message(
+def send_discord_safe(
     message
+):
+
+    # Discord is optional.
+    # Telegram must continue working
+    # even if Discord has a problem.
+
+    if not os.getenv(
+        "DISCORD_WEBHOOK_URL"
+    ):
+        return False
+
+    try:
+
+        send_discord_message(
+            message
+        )
+
+        print(
+            "✅ Discord alert sent"
+        )
+
+        return True
+
+    except Exception as e:
+
+        print(
+            "⚠️ Discord alert failed: "
+            f"{e}"
+        )
+
+        return False
+
+
+def send_telegram_message(
+    message,
+    include_discord=True
 ):
 
     if not BOT_TOKEN:
@@ -201,6 +242,14 @@ def send_telegram_message(
             results
         )
 
+    # Send same alert to Discord
+    # only after Telegram succeeds.
+    if include_discord:
+
+        send_discord_safe(
+            message
+        )
+
     return all_results
 
 
@@ -209,5 +258,6 @@ def send_alert(
 ):
 
     return send_telegram_message(
-        message
+        message,
+        include_discord=True
     )
