@@ -23,6 +23,7 @@ on:
           - daily_report_live_only
           - weekly_report_only
           - weekly_report_live_only
+          - chart_image_only
           - deep
 
 permissions:
@@ -89,9 +90,11 @@ jobs:
             confluence.py \
             ranking.py \
             ranking_alert.py \
+            tradingview_link.py \
+            chart_image.py \
             live_engine.py
 
-          python -c "import live_engine; import ranking; import ranking_alert; import session_summary; import daily_report; import daily_report_live; import weekly_report; import weekly_report_live; print('✅ BASIC IMPORT TEST PASSED')"
+          python -c "import live_engine; import ranking; import ranking_alert; import session_summary; import daily_report; import daily_report_live; import weekly_report; import weekly_report_live; import tradingview_link; import chart_image; print('✅ BASIC IMPORT TEST PASSED')"
 
       - name: Run Liquidity Only Test
         if: ${{ inputs.test_mode == 'liquidity_only' }}
@@ -147,6 +150,10 @@ jobs:
         if: ${{ inputs.test_mode == 'weekly_report_live_only' }}
         run: python test_weekly_report_live_only.py
 
+      - name: Run Chart Image Only Test
+        if: ${{ inputs.test_mode == 'chart_image_only' }}
+        run: python test_chart_image.py
+
       - name: Run Deep Test
         if: ${{ inputs.test_mode == 'deep' }}
         env:
@@ -186,6 +193,8 @@ jobs:
           python test_weekly_report_only.py
 
           python test_weekly_report_live_only.py
+
+          python test_chart_image.py
 
           python test_ranking_live.py
 
