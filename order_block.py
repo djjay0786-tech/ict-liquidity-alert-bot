@@ -49,17 +49,19 @@ def prepare_candles(values):
 def detect_order_blocks(df):
 
     """
-    Refined Order Block logic.
-
     Bullish OB:
-    - Bearish candle
-    - Next candle shows displacement upward
+    - Current candle bearish
+    - Next candle bullish displacement
     - Next candle closes above OB high
 
     Bearish OB:
-    - Bullish candle
-    - Next candle shows displacement downward
+    - Current candle bullish
+    - Next candle bearish displacement
     - Next candle closes below OB low
+
+    IMPORTANT:
+    The next candle is the CONFIRMATION candle.
+    It must NOT be counted as the first OB tap.
     """
 
     if df is None or len(df) < 3:
@@ -97,14 +99,6 @@ def detect_order_blocks(df):
 
         next_close = float(
             next_candle["close"]
-        )
-
-        next_high = float(
-            next_candle["high"]
-        )
-
-        next_low = float(
-            next_candle["low"]
         )
 
         candle_range = max(
@@ -152,20 +146,45 @@ def detect_order_blocks(df):
         ):
 
             order_blocks.append({
-                "type": "BULLISH OB",
-                "time": str(
-                    candle["datetime"]
-                ),
-                "index": i,
-                "high": candle_high,
-                "low": candle_low,
-                "open": candle_open,
-                "close": candle_close,
-                "midpoint": (
-                    candle_high
-                    +
-                    candle_low
-                ) / 2
+                "type":
+                    "BULLISH OB",
+
+                "time":
+                    str(
+                        candle["datetime"]
+                    ),
+
+                "index":
+                    i,
+
+                "confirmation_index":
+                    i + 1,
+
+                "confirmation_time":
+                    str(
+                        next_candle[
+                            "datetime"
+                        ]
+                    ),
+
+                "high":
+                    candle_high,
+
+                "low":
+                    candle_low,
+
+                "open":
+                    candle_open,
+
+                "close":
+                    candle_close,
+
+                "midpoint":
+                    (
+                        candle_high
+                        +
+                        candle_low
+                    ) / 2
             })
 
         # =====================================
@@ -198,20 +217,45 @@ def detect_order_blocks(df):
         ):
 
             order_blocks.append({
-                "type": "BEARISH OB",
-                "time": str(
-                    candle["datetime"]
-                ),
-                "index": i,
-                "high": candle_high,
-                "low": candle_low,
-                "open": candle_open,
-                "close": candle_close,
-                "midpoint": (
-                    candle_high
-                    +
-                    candle_low
-                ) / 2
+                "type":
+                    "BEARISH OB",
+
+                "time":
+                    str(
+                        candle["datetime"]
+                    ),
+
+                "index":
+                    i,
+
+                "confirmation_index":
+                    i + 1,
+
+                "confirmation_time":
+                    str(
+                        next_candle[
+                            "datetime"
+                        ]
+                    ),
+
+                "high":
+                    candle_high,
+
+                "low":
+                    candle_low,
+
+                "open":
+                    candle_open,
+
+                "close":
+                    candle_close,
+
+                "midpoint":
+                    (
+                        candle_high
+                        +
+                        candle_low
+                    ) / 2
             })
 
     return order_blocks
@@ -223,15 +267,14 @@ def is_ob_mitigated(
 ):
 
     """
-    Full mitigation rule.
+    Mitigation begins AFTER the
+    OB confirmation/displacement candle.
 
     Bullish OB:
-    price trades through OB low.
+    future candle trades through OB low.
 
     Bearish OB:
-    price trades through OB high.
-
-    OB creation candle is ignored.
+    future candle trades through OB high.
     """
 
     if (
@@ -241,8 +284,18 @@ def is_ob_mitigated(
     ):
         return False
 
+    confirmation_index = int(
+        ob.get(
+            "confirmation_index",
+            int(ob["index"]) + 1
+        )
+    )
+
+    # Ignore:
+    # 1. OB candle
+    # 2. confirmation/displacement candle
     start_index = (
-        int(ob["index"]) + 1
+        confirmation_index + 1
     )
 
     if start_index >= len(df):
@@ -260,9 +313,13 @@ def is_ob_mitigated(
         for _, candle in future.iterrows():
 
             if (
-                float(candle["low"])
+                float(
+                    candle["low"]
+                )
                 <=
-                float(ob["low"])
+                float(
+                    ob["low"]
+                )
             ):
 
                 return True
@@ -275,9 +332,13 @@ def is_ob_mitigated(
         for _, candle in future.iterrows():
 
             if (
-                float(candle["high"])
+                float(
+                    candle["high"]
+                )
                 >=
-                float(ob["high"])
+                float(
+                    ob["high"]
+                )
             ):
 
                 return True
@@ -289,14 +350,6 @@ def get_valid_order_blocks(
     df,
     direction=None
 ):
-
-    """
-    Return only unmitigated OBs.
-
-    direction:
-    BULLISH
-    BEARISH
-    """
 
     order_blocks = (
         detect_order_blocks(
@@ -364,8 +417,11 @@ def get_last_order_block(
             order_blocks = [
                 ob
                 for ob in order_blocks
-                if ob["type"]
-                == wanted_type
+                if (
+                    ob["type"]
+                    ==
+                    wanted_type
+                )
             ]
 
     if not order_blocks:
@@ -382,7 +438,8 @@ def format_ob_alert(
 
     if (
         ob["type"]
-        == "BULLISH OB"
+        ==
+        "BULLISH OB"
     ):
 
         emoji = "🟢"
@@ -393,14 +450,24 @@ def format_ob_alert(
 
     return (
         f"{emoji} {ob['type']}\n\n"
+
         f"Symbol: {symbol}\n"
-        f"Timeframe: {timeframe}\n\n"
+
+        f"Timeframe: "
+        f"{timeframe}\n\n"
+
         f"OB High: "
         f"{ob['high']:.5f}\n"
+
         f"OB Low: "
         f"{ob['low']:.5f}\n"
+
         f"OB Midpoint: "
         f"{ob['midpoint']:.5f}\n\n"
+
         f"OB Time: "
-        f"{ob['time']}"
+        f"{ob['time']}\n"
+
+        f"Confirmed: "
+        f"{ob.get('confirmation_time', '')}"
     )
