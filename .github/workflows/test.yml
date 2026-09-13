@@ -17,6 +17,7 @@ on:
           - confluence_only
           - ranking_only
           - ranking_live
+          - ranking_alert_only
           - deep
 
 permissions:
@@ -77,9 +78,10 @@ jobs:
             telegram_alert.py \
             confluence.py \
             ranking.py \
+            ranking_alert.py \
             live_engine.py
 
-          python -c "import live_engine; import ranking; print('✅ BASIC IMPORT TEST PASSED')"
+          python -c "import live_engine; import ranking; import ranking_alert; print('✅ BASIC IMPORT TEST PASSED')"
 
       - name: Run Liquidity Only Test
         if: ${{ inputs.test_mode == 'liquidity_only' }}
@@ -111,6 +113,10 @@ jobs:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python test_ranking_live.py
 
+      - name: Run Ranking Alert Only Test
+        if: ${{ inputs.test_mode == 'ranking_alert_only' }}
+        run: python test_ranking_alert.py
+
       - name: Run Deep Test
         if: ${{ inputs.test_mode == 'deep' }}
         env:
@@ -138,6 +144,8 @@ jobs:
           python test_confluence_only.py
 
           python test_ranking_only.py
+
+          python test_ranking_alert.py
 
           python test_ranking_live.py
 
