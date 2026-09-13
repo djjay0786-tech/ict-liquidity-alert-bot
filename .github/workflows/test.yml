@@ -19,6 +19,7 @@ on:
           - ranking_live
           - ranking_alert_only
           - session_summary_only
+          - daily_report_only
           - deep
 
 permissions:
@@ -70,6 +71,7 @@ jobs:
             session_liquidity.py \
             session_alerts.py \
             session_summary.py \
+            daily_report.py \
             crt.py \
             fvg.py \
             order_block.py \
@@ -83,7 +85,7 @@ jobs:
             ranking_alert.py \
             live_engine.py
 
-          python -c "import live_engine; import ranking; import ranking_alert; import session_summary; print('✅ BASIC IMPORT TEST PASSED')"
+          python -c "import live_engine; import ranking; import ranking_alert; import session_summary; import daily_report; print('✅ BASIC IMPORT TEST PASSED')"
 
       - name: Run Liquidity Only Test
         if: ${{ inputs.test_mode == 'liquidity_only' }}
@@ -123,6 +125,10 @@ jobs:
         if: ${{ inputs.test_mode == 'session_summary_only' }}
         run: python test_session_summary_only.py
 
+      - name: Run Daily Report Only Test
+        if: ${{ inputs.test_mode == 'daily_report_only' }}
+        run: python test_daily_report_only.py
+
       - name: Run Deep Test
         if: ${{ inputs.test_mode == 'deep' }}
         env:
@@ -154,6 +160,8 @@ jobs:
           python test_ranking_alert.py
 
           python test_session_summary_only.py
+
+          python test_daily_report_only.py
 
           python test_ranking_live.py
 
