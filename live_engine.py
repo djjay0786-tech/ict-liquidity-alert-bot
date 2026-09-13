@@ -64,6 +64,15 @@ from alert_state import (
 
 from telegram_alert import send_alert
 
+from telegram_chart_alert import (
+    send_chart_alert
+)
+
+from chart_image import (
+    create_mini_chart,
+    delete_chart
+)
+
 from confluence import (
     build_confluence,
     format_confluence_alert,
@@ -222,6 +231,75 @@ def send_message(
         return False
 
 
+def send_chart_or_text(
+    df,
+    symbol,
+    timeframe,
+    message,
+    label,
+    ob=None,
+    fvg=None,
+    liquidity=None,
+    crt=None
+):
+
+    chart_path = None
+
+    try:
+
+        chart_path = (
+            create_mini_chart(
+                df=df,
+                symbol=symbol,
+                timeframe=timeframe,
+                ob=ob,
+                fvg=fvg,
+                liquidity=liquidity,
+                crt=crt,
+                candle_count=50
+            )
+        )
+
+        send_chart_alert(
+            chart_path=chart_path,
+            message=message,
+            symbol=symbol,
+            timeframe=timeframe
+        )
+
+        print(
+            f"📸 Telegram "
+            f"{label} chart alert sent"
+        )
+
+        return True
+
+    except Exception as e:
+
+        print(
+            f"⚠️ Chart alert error | "
+            f"{label}: {e}"
+        )
+
+        print(
+            "↪️ Falling back "
+            "to text alert"
+        )
+
+        return send_message(
+            message,
+            label
+        )
+
+    finally:
+
+        if chart_path:
+
+            delete_chart(
+                chart_path
+            )
+
+
 def send_once(
     alert_id,
     message,
@@ -317,11 +395,6 @@ def check_session_open_close():
             )
         )
 
-        print(
-            f"\n🚨 {session} "
-            f"SESSION {event_type}"
-        )
-
         send_once(
             alert_id,
             message,
@@ -334,7 +407,6 @@ def check_session_open_close():
 
 # ==========================================
 # SESSION CLOSE SUMMARY
-# EUR/USD + GBP/USD + DXY
 # ==========================================
 
 def check_session_summaries(
@@ -396,12 +468,6 @@ def check_session_summaries(
                 df is None
                 or df.empty
             ):
-
-                print(
-                    f"⚠️ No H1 data for "
-                    f"{symbol} session summary"
-                )
-
                 continue
 
             try:
@@ -429,12 +495,6 @@ def check_session_summaries(
                 )
 
         if not summaries:
-
-            print(
-                f"⚠️ No summary data | "
-                f"{session}"
-            )
-
             continue
 
         message = (
@@ -452,11 +512,6 @@ def check_session_summaries(
             "COMBINED"
         )
 
-        print(
-            f"\n📊 {session} "
-            f"SESSION SUMMARY"
-        )
-
         send_once(
             alert_id,
             message,
@@ -464,18 +519,14 @@ def check_session_summaries(
             {
                 "session": session,
                 "event_date": event_date,
-                "scheduled_time": scheduled_time,
-                "symbols": [
-                    item["symbol"]
-                    for item in summaries
-                ]
+                "scheduled_time":
+                    scheduled_time
             }
         )
 
 
 # ==========================================
 # PDH / PDL
-# H1 ONLY
 # ==========================================
 
 def check_liquidity(
@@ -492,12 +543,6 @@ def check_liquidity(
     )
 
     if not alerts:
-
-        print(
-            f"💧 No PDH/PDL sweep | "
-            f"{symbol}"
-        )
-
         return
 
     for alert in alerts:
@@ -544,7 +589,6 @@ def check_liquidity(
 
 # ==========================================
 # DH / DL
-# H1 ONLY
 # ==========================================
 
 def check_daily_liquidity(
@@ -861,6 +905,7 @@ def check_ob_fvg(
 
 # ==========================================
 # OB FIRST TAP
+# WITH CHART
 # ==========================================
 
 def check_ob_first_tap(
@@ -877,6 +922,7 @@ def check_ob_first_tap(
         return
 
     ob = setup["ob"]
+    fvg = setup["fvg"]
 
     if not can_alert_first_tap(
         symbol,
@@ -910,9 +956,14 @@ def check_ob_first_tap(
         candle
     )
 
-    sent = send_message(
-        message,
-        "OB First Tap"
+    sent = send_chart_or_text(
+        df=df,
+        symbol=symbol,
+        timeframe=timeframe,
+        message=message,
+        label="OB First Tap",
+        ob=ob,
+        fvg=fvg
     )
 
     if sent:
@@ -925,7 +976,7 @@ def check_ob_first_tap(
 
 # ==========================================
 # HIGH CONFLUENCE
-# H1 ONLY
+# WITH CHART
 # ==========================================
 
 def check_high_confluence(
@@ -1067,6 +1118,8 @@ def check_high_confluence(
         return
 
     final_setup = None
+    final_liquidity = None
+    final_crt = None
 
     for liquidity_alert in reversed(
         fresh_liquidity
@@ -1091,6 +1144,10 @@ def check_high_confluence(
             if candidate is not None:
 
                 final_setup = candidate
+                final_liquidity = (
+                    liquidity_alert
+                )
+                final_crt = crt_alert
                 break
 
         if final_setup is not None:
@@ -1117,18 +1174,41 @@ def check_high_confluence(
         )
     )
 
+    if not can_send_alert(
+        alert_id
+    ):
+
+        print(
+            "🚫 Duplicate High "
+            "Confluence alert blocked"
+        )
+
+        return
+
     message = (
         format_confluence_alert(
             final_setup
         )
     )
 
-    send_once(
-        alert_id,
-        message,
-        "High Confluence",
-        final_setup
+    sent = send_chart_or_text(
+        df=df,
+        symbol=symbol,
+        timeframe=timeframe,
+        message=message,
+        label="High Confluence",
+        ob=ob,
+        fvg=fvg,
+        liquidity=final_liquidity,
+        crt=final_crt
     )
+
+    if sent:
+
+        mark_alert_sent(
+            alert_id,
+            final_setup
+        )
 
 
 # ==========================================
@@ -1477,6 +1557,8 @@ def run_engine():
                     df
                 )
 
+                # High Confluence first,
+                # before OB tap is confirmed.
                 check_high_confluence(
                     symbol,
                     timeframe,
