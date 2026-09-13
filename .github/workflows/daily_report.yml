@@ -1,0 +1,75 @@
+name: Daily ICT Report
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    # Monday-Friday at 11:45 PM IST
+    # 11:45 PM IST = 18:15 UTC
+    - cron: "15 18 * * 1-5"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ict-bot-live
+  cancel-in-progress: false
+
+jobs:
+  daily-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore Live Bot State
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ob_state.json
+            alert_state.json
+            ranking_state.json
+          key: ict-live-state-${{ github.ref_name }}-daily-report-${{ github.run_id }}
+          restore-keys: |
+            ict-live-state-${{ github.ref_name }}-
+
+      - name: Initialize State Files
+        run: |
+          if [ ! -f ob_state.json ]; then
+            echo '{}' > ob_state.json
+          fi
+
+          if [ ! -f alert_state.json ]; then
+            echo '{}' > alert_state.json
+          fi
+
+          if [ ! -f ranking_state.json ]; then
+            echo '{}' > ranking_state.json
+          fi
+
+      - name: Send Daily ICT Report
+        env:
+          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_GROUP_CHAT_ID: ${{ secrets.TELEGRAM_GROUP_CHAT_ID }}
+        run: python daily_report_sender.py
+
+      - name: Save Live Bot State
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ob_state.json
+            alert_state.json
+            ranking_state.json
+          key: ict-live-state-${{ github.ref_name }}-daily-report-${{ github.run_id }}
