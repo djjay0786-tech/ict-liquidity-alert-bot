@@ -7,6 +7,10 @@ from telegram_alert import (
     send_telegram_message
 )
 
+from discord_alert import (
+    send_discord_chart
+)
+
 from tradingview_link import (
     add_tradingview_link
 )
@@ -42,8 +46,10 @@ def get_chat_ids():
 
         if (
             chat_id
-            and chat_id not in chat_ids
+            and
+            chat_id not in chat_ids
         ):
+
             chat_ids.append(
                 chat_id
             )
@@ -95,6 +101,7 @@ def send_photo_to_chat(
     if not response.ok:
 
         try:
+
             description = (
                 response.json()
                 .get(
@@ -116,6 +123,43 @@ def send_photo_to_chat(
         )
 
     return True
+
+
+def send_discord_chart_safe(
+    chart_path,
+    message
+):
+
+    if not os.getenv(
+        "DISCORD_WEBHOOK_URL"
+    ):
+
+        return False
+
+    try:
+
+        send_discord_chart(
+            chart_path,
+            message
+        )
+
+        print(
+            "📸 Discord chart + "
+            "alert sent"
+        )
+
+        return True
+
+    except Exception as e:
+
+        # Never break Telegram because
+        # Discord had a problem.
+        print(
+            "⚠️ Discord chart failed: "
+            f"{e}"
+        )
+
+        return False
 
 
 def send_chart_alert(
@@ -151,9 +195,10 @@ def send_chart_alert(
         )
     )
 
-    # Telegram photo captions have
-    # a smaller limit than normal messages.
-    # Most ICT alerts should fit here.
+    # =====================================
+    # SHORT ALERT
+    # =====================================
+
     if len(full_message) <= 1000:
 
         for chat_id in chat_ids:
@@ -164,15 +209,23 @@ def send_chart_alert(
                 full_message
             )
 
+        # Discord receives same chart
+        # + same TradingView link.
+        send_discord_chart_safe(
+            chart_path,
+            full_message
+        )
+
         print(
             "📸 Chart + alert sent"
         )
 
         return True
 
-    # If alert becomes too long:
-    # send small chart first,
-    # then complete text separately.
+    # =====================================
+    # LONG ALERT
+    # =====================================
+
     short_caption = (
         f"📈 {symbol} • "
         f"{timeframe}\n"
@@ -187,7 +240,18 @@ def send_chart_alert(
             short_caption
         )
 
+    # Telegram full text only.
+    # Do NOT send Discord text here,
+    # otherwise Discord would get
+    # duplicate alert.
     send_telegram_message(
+        full_message,
+        include_discord=False
+    )
+
+    # Discord gets chart + full text.
+    send_discord_chart_safe(
+        chart_path,
         full_message
     )
 
