@@ -24,6 +24,7 @@ on:
           - weekly_report_only
           - weekly_report_live_only
           - chart_image_only
+          - backtest_only
           - deep
 
 permissions:
@@ -77,8 +78,10 @@ jobs:
             session_summary.py \
             daily_report.py \
             daily_report_live.py \
+            daily_report_sender.py \
             weekly_report.py \
             weekly_report_live.py \
+            weekly_report_sender.py \
             crt.py \
             fvg.py \
             order_block.py \
@@ -87,14 +90,16 @@ jobs:
             ob_state.py \
             alert_state.py \
             telegram_alert.py \
+            telegram_chart_alert.py \
             confluence.py \
             ranking.py \
             ranking_alert.py \
             tradingview_link.py \
             chart_image.py \
+            backtest_engine.py \
             live_engine.py
 
-          python -c "import live_engine; import ranking; import ranking_alert; import session_summary; import daily_report; import daily_report_live; import weekly_report; import weekly_report_live; import tradingview_link; import chart_image; print('✅ BASIC IMPORT TEST PASSED')"
+          python -c "import live_engine; import backtest_engine; import chart_image; import telegram_chart_alert; print('✅ BASIC IMPORT TEST PASSED')"
 
       - name: Run Liquidity Only Test
         if: ${{ inputs.test_mode == 'liquidity_only' }}
@@ -154,6 +159,10 @@ jobs:
         if: ${{ inputs.test_mode == 'chart_image_only' }}
         run: python test_chart_image.py
 
+      - name: Run Backtest Only Test
+        if: ${{ inputs.test_mode == 'backtest_only' }}
+        run: python test_backtest_engine.py
+
       - name: Run Deep Test
         if: ${{ inputs.test_mode == 'deep' }}
         env:
@@ -171,30 +180,19 @@ jobs:
           python test_crt.py
 
           python test_liquidity_only.py
-
           python test_session_liquidity_only.py
-
           python test_fvg_only.py
-
           python test_ob_fvg_only.py
-
           python test_confluence_only.py
-
           python test_ranking_only.py
-
           python test_ranking_alert.py
-
           python test_session_summary_only.py
-
           python test_daily_report_only.py
-
           python test_daily_report_live_only.py
-
           python test_weekly_report_only.py
-
           python test_weekly_report_live_only.py
-
           python test_chart_image.py
+          python test_backtest_engine.py
 
           python test_ranking_live.py
 
