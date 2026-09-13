@@ -1,5 +1,3 @@
-import pandas as pd
-
 from liquidity import (
     detect_liquidity_grab,
     detect_daily_liquidity_grab
@@ -35,6 +33,10 @@ SESSIONS = [
 ]
 
 
+# ==========================================
+# EVENT COLLECTION
+# ==========================================
+
 def get_liquidity_alerts(df):
 
     alerts = []
@@ -68,29 +70,120 @@ def get_liquidity_alerts(df):
         except Exception:
             pass
 
-    return [
-        alert
-        for alert in alerts
-        if get_direction_from_liquidity(
-            alert
-        ) is not None
-    ]
+    valid = []
+
+    for alert in alerts:
+
+        if (
+            get_direction_from_liquidity(
+                alert
+            )
+            is not None
+        ):
+            valid.append(
+                alert
+            )
+
+    return valid
 
 
 def get_crt_alerts(df):
 
-    alerts = detect_crt(
-        df
-    ) or []
+    alerts = (
+        detect_crt(df)
+        or []
+    )
 
-    return [
-        alert
-        for alert in alerts
-        if get_direction_from_crt(
-            alert
-        ) is not None
-    ]
+    valid = []
 
+    for alert in alerts:
+
+        if (
+            get_direction_from_crt(
+                alert
+            )
+            is not None
+        ):
+            valid.append(
+                alert
+            )
+
+    return valid
+
+
+def make_liquidity_key(
+    alert
+):
+
+    return "|".join([
+        str(
+            alert.get(
+                "type",
+                ""
+            )
+        ),
+        str(
+            alert.get(
+                "time",
+                ""
+            )
+        ),
+        str(
+            alert.get(
+                "level",
+                ""
+            )
+        ),
+        str(
+            alert.get(
+                "session",
+                ""
+            )
+        ),
+        str(
+            alert.get(
+                "session_date",
+                ""
+            )
+        ),
+        str(
+            alert.get(
+                "level_date",
+                ""
+            )
+        )
+    ])
+
+
+def make_crt_key(
+    alert
+):
+
+    return "|".join([
+        str(
+            alert.get(
+                "type",
+                ""
+            )
+        ),
+        str(
+            alert.get(
+                "first_candle_time",
+                ""
+            )
+        ),
+        str(
+            alert.get(
+                "second_candle_time",
+                ""
+            )
+        )
+    ])
+
+
+# ==========================================
+# FORWARD MOVE
+# ==========================================
 
 def calculate_forward_move(
     full_df,
@@ -194,12 +287,18 @@ def convert_move(
     }
 
 
+# ==========================================
+# SEQUENCE BACKTEST
+# ==========================================
+
 def backtest_symbol(
     df,
     symbol,
     timeframe="H1",
     minimum_candles=60,
-    forward_candles=6
+    forward_candles=6,
+    liquidity_lookback=6,
+    crt_lookback=4
 ):
 
     if (
@@ -209,8 +308,16 @@ def backtest_symbol(
 
         return {
             "symbol": symbol,
+            "timeframe": timeframe,
+            "setup_count": 0,
             "setups": [],
-            "setup_count": 0
+            "stats": {
+                "candles": 0,
+                "liquidity_events": 0,
+                "crt_events": 0,
+                "ob_first_taps": 0,
+                "confluence_setups": 0
+            }
         }
 
     data = (
@@ -225,51 +332,159 @@ def backtest_symbol(
 
     setups = []
 
-    seen = set()
+    seen_setups = set()
+    seen_liquidity = set()
+    seen_crt = set()
+    seen_taps = set()
+
+    liquidity_history = []
+    crt_history = []
+
+    stats = {
+        "candles":
+            len(data),
+
+        "liquidity_events":
+            0,
+
+        "crt_events":
+            0,
+
+        "ob_first_taps":
+            0,
+
+        "confluence_setups":
+            0
+    }
 
     for index in range(
         minimum_candles,
         len(data)
     ):
 
-        history = data.iloc[
-            :index + 1
-        ].copy()
+        history = (
+            data.iloc[
+                :index + 1
+            ]
+            .copy()
+        )
 
-        liquidity_alerts = (
+        # ==================================
+        # 1. RECORD LIQUIDITY EVENTS
+        # ==================================
+
+        current_liquidity = (
             get_liquidity_alerts(
                 history
             )
         )
 
-        if not liquidity_alerts:
-            continue
+        for alert in current_liquidity:
 
-        crt_alerts = (
+            key = (
+                make_liquidity_key(
+                    alert
+                )
+            )
+
+            if key in seen_liquidity:
+                continue
+
+            seen_liquidity.add(
+                key
+            )
+
+            direction = (
+                get_direction_from_liquidity(
+                    alert
+                )
+            )
+
+            liquidity_history.append({
+                "index":
+                    index,
+
+                "direction":
+                    direction,
+
+                "alert":
+                    alert
+            })
+
+            stats[
+                "liquidity_events"
+            ] += 1
+
+        # ==================================
+        # 2. RECORD CRT EVENTS
+        # ==================================
+
+        current_crt = (
             get_crt_alerts(
                 history
             )
         )
 
-        if not crt_alerts:
-            continue
+        for alert in current_crt:
 
-        ob_fvg = (
+            key = (
+                make_crt_key(
+                    alert
+                )
+            )
+
+            if key in seen_crt:
+                continue
+
+            seen_crt.add(
+                key
+            )
+
+            direction = (
+                get_direction_from_crt(
+                    alert
+                )
+            )
+
+            crt_history.append({
+                "index":
+                    index,
+
+                "direction":
+                    direction,
+
+                "alert":
+                    alert
+            })
+
+            stats[
+                "crt_events"
+            ] += 1
+
+        # ==================================
+        # 3. CURRENT VALID OB + FVG
+        # ==================================
+
+        setup = (
             select_ob_near_fvg(
                 history
             )
         )
 
-        if ob_fvg is None:
+        if setup is None:
             continue
 
-        ob = ob_fvg[
+        ob = setup[
             "ob"
         ]
 
-        fvg = ob_fvg[
+        fvg = setup[
             "fvg"
         ]
+
+        # ==================================
+        # 4. FIRST TAP
+        # ==================================
 
         first_tap = (
             is_latest_candle_first_tap(
@@ -281,65 +496,214 @@ def backtest_symbol(
         if not first_tap:
             continue
 
-        final_setup = None
+        tap_key = "|".join([
+            str(
+                ob.get(
+                    "type",
+                    ""
+                )
+            ),
+            str(
+                ob.get(
+                    "time",
+                    ""
+                )
+            ),
+            str(
+                history.iloc[-1][
+                    "datetime"
+                ]
+            )
+        ])
 
-        for liquidity in reversed(
-            liquidity_alerts
+        if tap_key not in seen_taps:
+
+            seen_taps.add(
+                tap_key
+            )
+
+            stats[
+                "ob_first_taps"
+            ] += 1
+
+        # ==================================
+        # 5. RECENT LIQUIDITY WINDOW
+        # ==================================
+
+        recent_liquidity = [
+            item
+            for item
+            in liquidity_history
+            if (
+                0
+                <= index
+                - item["index"]
+                <= liquidity_lookback
+            )
+        ]
+
+        if not recent_liquidity:
+            continue
+
+        # ==================================
+        # 6. RECENT CRT WINDOW
+        # ==================================
+
+        recent_crt = [
+            item
+            for item
+            in crt_history
+            if (
+                0
+                <= index
+                - item["index"]
+                <= crt_lookback
+            )
+        ]
+
+        if not recent_crt:
+            continue
+
+        # ==================================
+        # 7. SEQUENCE:
+        # LIQUIDITY -> CRT -> OB TAP
+        # ==================================
+
+        final_setup = None
+        final_liquidity = None
+        final_crt = None
+
+        for crt_item in reversed(
+            recent_crt
         ):
 
-            for crt in reversed(
-                crt_alerts
+            for liquidity_item in reversed(
+                recent_liquidity
             ):
+
+                # Liquidity must happen
+                # before or at CRT.
+                if (
+                    liquidity_item[
+                        "index"
+                    ]
+                    >
+                    crt_item[
+                        "index"
+                    ]
+                ):
+                    continue
+
+                # Directions must agree
+                # before building final
+                # confluence.
+                if (
+                    liquidity_item[
+                        "direction"
+                    ]
+                    !=
+                    crt_item[
+                        "direction"
+                    ]
+                ):
+                    continue
 
                 candidate = (
                     build_confluence(
                         symbol=symbol,
                         timeframe=timeframe,
-                        liquidity_alert=liquidity,
-                        crt_alert=crt,
+                        liquidity_alert=
+                            liquidity_item[
+                                "alert"
+                            ],
+                        crt_alert=
+                            crt_item[
+                                "alert"
+                            ],
                         fvg=fvg,
                         ob=ob,
                         ob_first_tap=True
                     )
                 )
 
-                if candidate is not None:
+                if candidate is None:
+                    continue
 
-                    final_setup = candidate
-                    break
+                final_setup = (
+                    candidate
+                )
 
-            if final_setup is not None:
+                final_liquidity = (
+                    liquidity_item[
+                        "alert"
+                    ]
+                )
+
+                final_crt = (
+                    crt_item[
+                        "alert"
+                    ]
+                )
+
+                break
+
+            if (
+                final_setup
+                is not None
+            ):
                 break
 
         if final_setup is None:
             continue
 
-        candle = history.iloc[-1]
+        # ==================================
+        # 8. UNIQUE SETUP
+        # ==================================
+
+        candle = (
+            history.iloc[-1]
+        )
 
         signal_time = str(
-            candle["datetime"]
+            candle[
+                "datetime"
+            ]
         )
 
-        direction = final_setup[
-            "direction"
-        ]
-
-        unique_id = (
-            f"{signal_time}|"
-            f"{direction}|"
-            f"{ob.get('time', '')}|"
-            f"{fvg.get('time', '')}"
+        direction = (
+            final_setup[
+                "direction"
+            ]
         )
 
-        if unique_id in seen:
+        unique_id = "|".join([
+            signal_time,
+            direction,
+            str(
+                ob.get(
+                    "time",
+                    ""
+                )
+            ),
+            str(
+                fvg.get(
+                    "time",
+                    ""
+                )
+            )
+        ])
+
+        if unique_id in seen_setups:
             continue
 
-        seen.add(
+        seen_setups.add(
             unique_id
         )
 
         entry_price = float(
-            candle["close"]
+            candle[
+                "close"
+            ]
         )
 
         movement = (
@@ -389,13 +753,25 @@ def backtest_symbol(
                 entry_price,
 
             "best_move":
-                best["value"],
+                best[
+                    "value"
+                ],
 
             "worst_move":
-                worst["value"],
+                worst[
+                    "value"
+                ],
 
             "unit":
-                best["unit"],
+                best[
+                    "unit"
+                ],
+
+            "liquidity":
+                final_liquidity,
+
+            "crt":
+                final_crt,
 
             "ob":
                 ob,
@@ -403,6 +779,10 @@ def backtest_symbol(
             "fvg":
                 fvg
         })
+
+        stats[
+            "confluence_setups"
+        ] += 1
 
     return {
         "symbol":
@@ -415,23 +795,42 @@ def backtest_symbol(
             len(setups),
 
         "setups":
-            setups
+            setups,
+
+        "stats":
+            stats
     }
 
+
+# ==========================================
+# SUMMARY
+# ==========================================
 
 def summarize_backtest(
     result
 ):
 
-    setups = result[
-        "setups"
-    ]
+    setups = (
+        result.get(
+            "setups",
+            []
+        )
+    )
+
+    stats = (
+        result.get(
+            "stats",
+            {}
+        )
+    )
 
     if not setups:
 
         return {
             "symbol":
-                result["symbol"],
+                result[
+                    "symbol"
+                ],
 
             "setup_count":
                 0,
@@ -445,18 +844,25 @@ def summarize_backtest(
             "unit":
                 (
                     "pips"
-                    if result["symbol"]
+                    if result[
+                        "symbol"
+                    ]
                     in [
                         "EUR/USD",
                         "GBP/USD"
                     ]
                     else "points"
-                )
+                ),
+
+            "stats":
+                stats
         }
 
     average_best = (
         sum(
-            item["best_move"]
+            item[
+                "best_move"
+            ]
             for item in setups
         )
         / len(setups)
@@ -464,7 +870,9 @@ def summarize_backtest(
 
     average_worst = (
         sum(
-            item["worst_move"]
+            item[
+                "worst_move"
+            ]
             for item in setups
         )
         / len(setups)
@@ -472,7 +880,9 @@ def summarize_backtest(
 
     return {
         "symbol":
-            result["symbol"],
+            result[
+                "symbol"
+            ],
 
         "setup_count":
             len(setups),
@@ -486,7 +896,10 @@ def summarize_backtest(
         "unit":
             setups[0][
                 "unit"
-            ]
+            ],
+
+        "stats":
+            stats
     }
 
 
@@ -494,7 +907,14 @@ def format_backtest_summary(
     summary
 ):
 
-    return (
+    stats = (
+        summary.get(
+            "stats",
+            {}
+        )
+    )
+
+    message = (
         "🧪 ICT BACKTEST RESULT\n\n"
 
         f"Symbol: "
@@ -502,7 +922,23 @@ def format_backtest_summary(
 
         f"High Confluence Setups: "
         f"{summary['setup_count']}\n\n"
+    )
 
+    if stats:
+
+        message += (
+            "🔎 Sequence Funnel\n"
+            f"Liquidity Events: "
+            f"{stats.get('liquidity_events', 0)}\n"
+
+            f"CRT Events: "
+            f"{stats.get('crt_events', 0)}\n"
+
+            f"OB First Taps: "
+            f"{stats.get('ob_first_taps', 0)}\n\n"
+        )
+
+    message += (
         f"📈 Average Favorable Move: "
         f"{summary['average_best_move']:.1f} "
         f"{summary['unit']}\n"
@@ -511,5 +947,9 @@ def format_backtest_summary(
         f"{summary['average_worst_move']:.1f} "
         f"{summary['unit']}\n\n"
 
-        "Forward window: configurable"
+        "Sequence: "
+        "Liquidity → CRT → "
+        "OB/FVG First Tap"
     )
+
+    return message
