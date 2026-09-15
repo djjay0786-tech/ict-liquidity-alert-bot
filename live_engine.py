@@ -2,6 +2,7 @@ import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+
 from market_data import get_candles
 
 from dxy_data import (
@@ -12,23 +13,11 @@ from dxy_data import (
 from liquidity import (
     prepare_candles,
     detect_liquidity_grab,
-    detect_daily_liquidity_grab,
-    format_alert
+    detect_daily_liquidity_grab
 )
 
 from session_liquidity import (
-    detect_session_liquidity,
-    format_session_alert
-)
-
-from session_alerts import (
-    get_session_events,
-    format_session_event
-)
-
-from session_summary import (
-    calculate_session_summary,
-    format_combined_session_summary
+    detect_session_liquidity
 )
 
 from crt import (
@@ -36,24 +25,12 @@ from crt import (
     format_crt_alert
 )
 
-from fvg import (
-    get_valid_fvgs,
-    format_fvg_alert
-)
-
 from ob_fvg import (
-    select_ob_near_fvg,
-    format_ob_fvg_selection
+    select_ob_near_fvg
 )
 
 from ob_tap import (
-    is_latest_candle_first_tap,
-    create_tap_alert
-)
-
-from ob_state import (
-    can_alert_first_tap,
-    confirm_first_tap
+    is_latest_candle_first_tap
 )
 
 from alert_state import (
@@ -62,7 +39,9 @@ from alert_state import (
     mark_alert_sent
 )
 
-from telegram_alert import send_alert
+from telegram_alert import (
+    send_alert
+)
 
 from telegram_chart_alert import (
     send_chart_alert
@@ -80,14 +59,10 @@ from confluence import (
     get_direction_from_crt
 )
 
-from ranking import (
-    rank_instruments
-)
 
-from ranking_alert import (
-    process_ranking_alert
-)
-
+# ==========================================
+# SYMBOLS
+# ==========================================
 
 SYMBOLS = [
     "EUR/USD",
@@ -96,7 +71,12 @@ SYMBOLS = [
 ]
 
 
+# ==========================================
+# TIMEFRAMES
+# ==========================================
+
 TIMEFRAMES = {
+
     "H1": {
         "twelve": "1h",
         "dxy": "1h",
@@ -109,6 +89,8 @@ TIMEFRAMES = {
         "fresh_hours": 8
     },
 
+    # Keep DAILY available for
+    # report modules / compatibility.
     "DAILY": {
         "twelve": "1day",
         "dxy": "1d",
@@ -117,8 +99,21 @@ TIMEFRAMES = {
 }
 
 
-UTC = ZoneInfo("UTC")
+# Live Clean Mode only needs H1 + H4.
+LIVE_TIMEFRAMES = [
+    "H1",
+    "H4"
+]
 
+
+UTC = ZoneInfo(
+    "UTC"
+)
+
+
+# ==========================================
+# FRESH EVENT CHECK
+# ==========================================
 
 def is_fresh(
     event_time,
@@ -161,7 +156,11 @@ def is_fresh(
         ]["fresh_hours"]
     )
 
-    age = now - event_dt
+    age = (
+        now
+        -
+        event_dt
+    )
 
     return (
         timedelta(0)
@@ -169,6 +168,10 @@ def is_fresh(
         <= max_age
     )
 
+
+# ==========================================
+# MARKET DATA
+# ==========================================
 
 def get_market_data(
     symbol,
@@ -182,7 +185,9 @@ def get_market_data(
     if symbol == "DXY":
 
         data = get_dxy_candles(
-            interval=config["dxy"],
+            interval=config[
+                "dxy"
+            ],
             limit=200
         )
 
@@ -192,17 +197,27 @@ def get_market_data(
 
     data = get_candles(
         symbol,
-        interval=config["twelve"],
+        interval=config[
+            "twelve"
+        ],
         outputsize=200
     )
 
     if "values" not in data:
+
         return None
 
     return prepare_candles(
         data["values"]
     )
 
+
+# ==========================================
+# MESSAGE SEND
+# Telegram Personal
+# Telegram Group
+# Discord
+# ==========================================
 
 def send_message(
     message,
@@ -216,8 +231,8 @@ def send_message(
         )
 
         print(
-            f"📲 Telegram "
-            f"{label} alert sent"
+            f"📲 {label} alert sent "
+            f"to Telegram + Discord"
         )
 
         return True
@@ -225,11 +240,16 @@ def send_message(
     except Exception as e:
 
         print(
-            f"⚠️ Telegram error: {e}"
+            f"⚠️ {label} send error: "
+            f"{e}"
         )
 
         return False
 
+
+# ==========================================
+# CHART SEND
+# ==========================================
 
 def send_chart_or_text(
     df,
@@ -268,8 +288,8 @@ def send_chart_or_text(
         )
 
         print(
-            f"📸 Telegram "
-            f"{label} chart alert sent"
+            f"📸 {label} chart "
+            f"alert sent"
         )
 
         return True
@@ -300,6 +320,10 @@ def send_chart_or_text(
             )
 
 
+# ==========================================
+# DUPLICATE SAFE TEXT ALERT
+# ==========================================
+
 def send_once(
     alert_id,
     message,
@@ -313,7 +337,7 @@ def send_once(
 
         print(
             f"🚫 Duplicate "
-            f"{label} alert blocked"
+            f"{label} blocked"
         )
 
         return False
@@ -336,397 +360,8 @@ def send_once(
 
 
 # ==========================================
-# SESSION OPEN / CLOSE
-# ==========================================
-
-def check_session_open_close():
-
-    current_utc = datetime.now(
-        UTC
-    )
-
-    events = get_session_events(
-        current_utc
-    )
-
-    if not events:
-
-        print(
-            "🕒 No session "
-            "open/close event"
-        )
-
-        return []
-
-    for event in events:
-
-        session = event[
-            "session"
-        ]
-
-        event_type = event[
-            "event"
-        ]
-
-        event_date = event[
-            "event_date"
-        ]
-
-        scheduled_time = event[
-            "scheduled_time"
-        ]
-
-        stable_event_time = (
-            f"{event_date}|"
-            f"{scheduled_time}"
-        )
-
-        alert_id = make_alert_id(
-            "SESSION_EVENT",
-            session,
-            "GLOBAL",
-            stable_event_time,
-            event_type
-        )
-
-        message = (
-            format_session_event(
-                event
-            )
-        )
-
-        send_once(
-            alert_id,
-            message,
-            "Session Open/Close",
-            event
-        )
-
-    return events
-
-
-# ==========================================
-# SESSION CLOSE SUMMARY
-# ==========================================
-
-def check_session_summaries(
-    session_events,
-    h1_market_data
-):
-
-    if not session_events:
-        return
-
-    for event in session_events:
-
-        event_type = str(
-            event.get(
-                "event",
-                ""
-            )
-        ).upper()
-
-        if "CLOSE" not in event_type:
-            continue
-
-        session = event.get(
-            "session",
-            ""
-        )
-
-        if session not in [
-            "ASIA",
-            "LONDON",
-            "NEW YORK"
-        ]:
-            continue
-
-        event_date = event.get(
-            "event_date",
-            ""
-        )
-
-        scheduled_time = event.get(
-            "scheduled_time",
-            ""
-        )
-
-        stable_event_time = (
-            f"{event_date}|"
-            f"{scheduled_time}"
-        )
-
-        summaries = []
-
-        for symbol in SYMBOLS:
-
-            df = h1_market_data.get(
-                symbol
-            )
-
-            if (
-                df is None
-                or df.empty
-            ):
-                continue
-
-            try:
-
-                summary = (
-                    calculate_session_summary(
-                        symbol=symbol,
-                        session=session,
-                        df=df
-                    )
-                )
-
-                if summary is not None:
-
-                    summaries.append(
-                        summary
-                    )
-
-            except Exception as e:
-
-                print(
-                    f"⚠️ Session summary "
-                    f"error | {symbol} | "
-                    f"{session}: {e}"
-                )
-
-        if not summaries:
-            continue
-
-        message = (
-            format_combined_session_summary(
-                session,
-                summaries
-            )
-        )
-
-        alert_id = make_alert_id(
-            "SESSION_SUMMARY",
-            session,
-            "H1",
-            stable_event_time,
-            "COMBINED"
-        )
-
-        send_once(
-            alert_id,
-            message,
-            "Session Summary",
-            {
-                "session": session,
-                "event_date": event_date,
-                "scheduled_time":
-                    scheduled_time
-            }
-        )
-
-
-# ==========================================
-# PDH / PDL
-# ==========================================
-
-def check_liquidity(
-    symbol,
-    timeframe,
-    df
-):
-
-    if timeframe != "H1":
-        return
-
-    alerts = detect_liquidity_grab(
-        df
-    )
-
-    if not alerts:
-        return
-
-    for alert in alerts:
-
-        event_time = alert.get(
-            "time",
-            ""
-        )
-
-        if not is_fresh(
-            event_time,
-            timeframe
-        ):
-            continue
-
-        alert_id = make_alert_id(
-            "PDH_PDL",
-            symbol,
-            timeframe,
-            event_time,
-            (
-                f"{alert.get('level', '')}|"
-                f"{alert.get('level_date', '')}"
-            )
-        )
-
-        message = format_alert(
-            symbol,
-            alert
-        )
-
-        message += (
-            f"\nTimeframe: "
-            f"{timeframe}"
-        )
-
-        send_once(
-            alert_id,
-            message,
-            "PDH/PDL",
-            alert
-        )
-
-
-# ==========================================
-# DH / DL
-# ==========================================
-
-def check_daily_liquidity(
-    symbol,
-    timeframe,
-    df
-):
-
-    if timeframe != "H1":
-        return
-
-    alerts = (
-        detect_daily_liquidity_grab(
-            df
-        )
-    )
-
-    if not alerts:
-        return
-
-    for alert in alerts:
-
-        event_time = alert.get(
-            "time",
-            ""
-        )
-
-        if not is_fresh(
-            event_time,
-            timeframe
-        ):
-            continue
-
-        alert_id = make_alert_id(
-            "DH_DL",
-            symbol,
-            timeframe,
-            event_time,
-            (
-                f"{alert.get('level', '')}|"
-                f"{alert.get('level_date', '')}"
-            )
-        )
-
-        message = format_alert(
-            symbol,
-            alert
-        )
-
-        message += (
-            f"\nTimeframe: "
-            f"{timeframe}"
-        )
-
-        send_once(
-            alert_id,
-            message,
-            "DH/DL",
-            alert
-        )
-
-
-# ==========================================
-# SESSION LIQUIDITY
-# ==========================================
-
-def check_session_liquidity(
-    symbol,
-    timeframe,
-    df
-):
-
-    if timeframe != "H1":
-        return
-
-    for session in [
-        "ASIA",
-        "LONDON",
-        "NEW YORK"
-    ]:
-
-        alerts = (
-            detect_session_liquidity(
-                df,
-                session
-            )
-        )
-
-        if not alerts:
-            continue
-
-        for alert in alerts:
-
-            event_time = alert.get(
-                "time",
-                ""
-            )
-
-            if not is_fresh(
-                event_time,
-                timeframe
-            ):
-                continue
-
-            alert_id = make_alert_id(
-                "SESSION_LIQUIDITY",
-                symbol,
-                timeframe,
-                event_time,
-                (
-                    f"{session}|"
-                    f"{alert.get('level', '')}|"
-                    f"{alert.get('session_date', '')}"
-                )
-            )
-
-            message = (
-                format_session_alert(
-                    symbol,
-                    alert
-                )
-            )
-
-            message += (
-                f"\nTimeframe: "
-                f"{timeframe}"
-            )
-
-            send_once(
-                alert_id,
-                message,
-                "Session Liquidity",
-                alert
-            )
-
-
-# ==========================================
 # CRT
+# ONLY H1 + H4
 # ==========================================
 
 def check_crt(
@@ -739,10 +374,14 @@ def check_crt(
         "H1",
         "H4"
     ]:
+
         return
 
-    alerts = detect_crt(
-        df
+    alerts = (
+        detect_crt(
+            df
+        )
+        or []
     )
 
     for alert in alerts:
@@ -758,6 +397,7 @@ def check_crt(
             confirmation_time,
             timeframe
         ):
+
             continue
 
         alert_id = make_alert_id(
@@ -788,195 +428,283 @@ def check_crt(
 
 
 # ==========================================
-# FVG
+# H4 ORDER BLOCK
+# TAP OR PRICE INSIDE ZONE
+# ONE ALERT PER OB
 # ==========================================
 
-def check_fvg(
-    symbol,
-    timeframe,
-    df
+def latest_candle_touches_ob(
+    df,
+    ob
 ):
 
-    valid_fvgs = get_valid_fvgs(
-        df
-    )
-
-    if not valid_fvgs:
-        return
-
-    latest_fvg = valid_fvgs[-1]
-
-    fvg_time = latest_fvg.get(
-        "time",
-        ""
-    )
-
-    if not is_fresh(
-        fvg_time,
-        timeframe
+    if (
+        df is None
+        or df.empty
+        or ob is None
     ):
-        return
 
-    alert_id = make_alert_id(
-        "FVG",
-        symbol,
-        timeframe,
-        fvg_time,
-        latest_fvg.get(
-            "type",
-            ""
+        return False
+
+    candle = df.iloc[-1]
+
+    candle_low = float(
+        candle[
+            "low"
+        ]
+    )
+
+    candle_high = float(
+        candle[
+            "high"
+        ]
+    )
+
+    ob_low = float(
+        ob[
+            "low"
+        ]
+    )
+
+    ob_high = float(
+        ob[
+            "high"
+        ]
+    )
+
+    return (
+        candle_low
+        <= ob_high
+        and
+        candle_high
+        >= ob_low
+    )
+
+
+def latest_price_inside_ob(
+    df,
+    ob
+):
+
+    if (
+        df is None
+        or df.empty
+        or ob is None
+    ):
+
+        return False
+
+    price = float(
+        df.iloc[-1][
+            "close"
+        ]
+    )
+
+    return (
+        float(
+            ob["low"]
+        )
+        <= price
+        <= float(
+            ob["high"]
         )
     )
 
-    message = format_fvg_alert(
-        symbol,
-        timeframe,
-        latest_fvg
+
+def format_h4_ob_alert(
+    symbol,
+    ob,
+    fvg,
+    candle,
+    price_inside
+):
+
+    if (
+        ob["type"]
+        ==
+        "BULLISH OB"
+    ):
+
+        emoji = "🟢"
+
+    else:
+
+        emoji = "🔴"
+
+    if price_inside:
+
+        status = (
+            "PRICE INSIDE H4 OB ZONE"
+        )
+
+    else:
+
+        status = (
+            "H4 OB TAPPED"
+        )
+
+    return (
+        f"{emoji} H4 ORDER BLOCK ALERT\n\n"
+
+        f"Symbol: {symbol}\n"
+        f"Timeframe: H4\n\n"
+
+        f"Type: {ob['type']}\n"
+
+        f"OB High: "
+        f"{float(ob['high']):.5f}\n"
+
+        f"OB Low: "
+        f"{float(ob['low']):.5f}\n"
+
+        f"OB Midpoint: "
+        f"{float(ob['midpoint']):.5f}\n\n"
+
+        f"Current Price: "
+        f"{float(candle['close']):.5f}\n"
+
+        f"Status: {status}\n\n"
+
+        f"OB Time: "
+        f"{ob.get('time', '')}\n"
+
+        f"Related FVG: "
+        f"{fvg.get('type', '')}\n"
+
+        f"FVG Time: "
+        f"{fvg.get('time', '')}"
     )
 
-    send_once(
-        alert_id,
-        message,
-        "FVG",
-        latest_fvg
-    )
 
-
-# ==========================================
-# OB + FVG
-# ==========================================
-
-def check_ob_fvg(
+def check_h4_ob_zone(
     symbol,
     timeframe,
     df
 ):
 
-    setup = select_ob_near_fvg(
-        df
+    if timeframe != "H4":
+        return
+
+    setup = (
+        select_ob_near_fvg(
+            df
+        )
     )
 
     if setup is None:
+
+        print(
+            f"ℹ️ No relevant H4 "
+            f"OB + FVG | {symbol}"
+        )
+
         return
 
-    ob = setup["ob"]
-    fvg = setup["fvg"]
+    ob = setup[
+        "ob"
+    ]
 
-    fvg_time = fvg.get(
-        "time",
-        ""
+    fvg = setup[
+        "fvg"
+    ]
+
+    touched = (
+        latest_candle_touches_ob(
+            df,
+            ob
+        )
+    )
+
+    price_inside = (
+        latest_price_inside_ob(
+            df,
+            ob
+        )
+    )
+
+    if not (
+        touched
+        or price_inside
+    ):
+
+        return
+
+    candle = (
+        df.iloc[-1]
+    )
+
+    candle_time = str(
+        candle[
+            "datetime"
+        ]
     )
 
     if not is_fresh(
-        fvg_time,
-        timeframe
+        candle_time,
+        "H4"
     ):
+
         return
 
+    # Stable ID based on the OB itself.
+    # Same H4 OB will alert only once,
+    # even if price stays inside during
+    # several 15-minute workflow runs.
     alert_id = make_alert_id(
-        "OB_FVG",
+        "H4_OB_ZONE",
         symbol,
-        timeframe,
-        fvg_time,
+        "H4",
+        ob.get(
+            "time",
+            ""
+        ),
         (
             f"{ob.get('type', '')}|"
-            f"{ob.get('time', '')}"
+            f"{float(ob['high']):.5f}|"
+            f"{float(ob['low']):.5f}"
         )
     )
 
     message = (
-        format_ob_fvg_selection(
+        format_h4_ob_alert(
             symbol,
-            timeframe,
-            setup
+            ob,
+            fvg,
+            candle,
+            price_inside
         )
     )
 
     send_once(
         alert_id,
         message,
-        "OB + FVG",
+        "H4 OB Zone",
         {
-            "ob": ob,
-            "fvg": fvg
+            "symbol":
+                symbol,
+
+            "timeframe":
+                "H4",
+
+            "ob":
+                ob,
+
+            "fvg":
+                fvg,
+
+            "tap_time":
+                candle_time,
+
+            "price_inside":
+                price_inside
         }
     )
 
 
 # ==========================================
-# OB FIRST TAP
-# WITH CHART
-# ==========================================
-
-def check_ob_first_tap(
-    symbol,
-    timeframe,
-    df
-):
-
-    setup = select_ob_near_fvg(
-        df
-    )
-
-    if setup is None:
-        return
-
-    ob = setup["ob"]
-    fvg = setup["fvg"]
-
-    if not can_alert_first_tap(
-        symbol,
-        timeframe,
-        ob
-    ):
-        return
-
-    if not is_latest_candle_first_tap(
-        df,
-        ob
-    ):
-        return
-
-    candle = df.iloc[-1]
-
-    candle_time = str(
-        candle["datetime"]
-    )
-
-    if not is_fresh(
-        candle_time,
-        timeframe
-    ):
-        return
-
-    message = create_tap_alert(
-        symbol,
-        timeframe,
-        ob,
-        candle
-    )
-
-    sent = send_chart_or_text(
-        df=df,
-        symbol=symbol,
-        timeframe=timeframe,
-        message=message,
-        label="OB First Tap",
-        ob=ob,
-        fvg=fvg
-    )
-
-    if sent:
-
-        confirm_first_tap(
-            symbol,
-            timeframe
-        )
-
-
-# ==========================================
 # HIGH CONFLUENCE
-# WITH CHART
+# H1 ONLY
+# CHART + TRADINGVIEW LINK
 # ==========================================
 
 def check_high_confluence(
@@ -988,32 +716,48 @@ def check_high_confluence(
     if timeframe != "H1":
         return
 
-    setup = select_ob_near_fvg(
-        df
+    setup = (
+        select_ob_near_fvg(
+            df
+        )
     )
 
     if setup is None:
         return
 
-    ob = setup["ob"]
-    fvg = setup["fvg"]
+    ob = setup[
+        "ob"
+    ]
 
-    fvg_time = fvg.get(
-        "time",
-        ""
+    fvg = setup[
+        "fvg"
+    ]
+
+    fvg_time = (
+        fvg.get(
+            "time",
+            ""
+        )
     )
 
     if not is_fresh(
         fvg_time,
         timeframe
     ):
+
         return
 
     if not is_latest_candle_first_tap(
         df,
         ob
     ):
+
         return
+
+    # ======================================
+    # BACKGROUND LIQUIDITY
+    # NO STANDALONE ALERT
+    # ======================================
 
     liquidity_alerts = []
 
@@ -1068,6 +812,7 @@ def check_high_confluence(
             ),
             timeframe
         ):
+
             continue
 
         if (
@@ -1084,10 +829,15 @@ def check_high_confluence(
     if not fresh_liquidity:
         return
 
+    # ======================================
+    # BACKGROUND CRT
+    # ======================================
+
     crt_alerts = (
         detect_crt(
             df
-        ) or []
+        )
+        or []
     )
 
     fresh_crt = []
@@ -1101,6 +851,7 @@ def check_high_confluence(
             ),
             timeframe
         ):
+
             continue
 
         if (
@@ -1133,8 +884,10 @@ def check_high_confluence(
                 build_confluence(
                     symbol=symbol,
                     timeframe=timeframe,
-                    liquidity_alert=liquidity_alert,
-                    crt_alert=crt_alert,
+                    liquidity_alert=
+                        liquidity_alert,
+                    crt_alert=
+                        crt_alert,
                     fvg=fvg,
                     ob=ob,
                     ob_first_tap=True
@@ -1143,11 +896,18 @@ def check_high_confluence(
 
             if candidate is not None:
 
-                final_setup = candidate
+                final_setup = (
+                    candidate
+                )
+
                 final_liquidity = (
                     liquidity_alert
                 )
-                final_crt = crt_alert
+
+                final_crt = (
+                    crt_alert
+                )
+
                 break
 
         if final_setup is not None:
@@ -1156,10 +916,14 @@ def check_high_confluence(
     if final_setup is None:
         return
 
-    candle = df.iloc[-1]
+    candle = (
+        df.iloc[-1]
+    )
 
     candle_time = str(
-        candle["datetime"]
+        candle[
+            "datetime"
+        ]
     )
 
     alert_id = make_alert_id(
@@ -1213,6 +977,8 @@ def check_high_confluence(
 
 # ==========================================
 # RANKING SNAPSHOT
+# KEEP FOR DAILY / WEEKLY REPORT MODULES
+# NO LIVE RANKING MESSAGE
 # ==========================================
 
 def build_ranking_snapshot(
@@ -1272,6 +1038,7 @@ def build_ranking_snapshot(
             ),
             "H1"
         ):
+
             continue
 
         if (
@@ -1296,7 +1063,8 @@ def build_ranking_snapshot(
     crt_alerts = (
         detect_crt(
             df
-        ) or []
+        )
+        or []
     )
 
     valid_crt = []
@@ -1310,6 +1078,7 @@ def build_ranking_snapshot(
             ),
             "H1"
         ):
+
             continue
 
         if (
@@ -1327,24 +1096,42 @@ def build_ranking_snapshot(
 
     if valid_crt:
 
-        crt = valid_crt[-1]
+        crt = (
+            valid_crt[-1]
+        )
 
-    setup = select_ob_near_fvg(
-        df
+    setup = (
+        select_ob_near_fvg(
+            df
+        )
     )
 
     if setup is None:
 
         return {
-            "liquidity": liquidity,
-            "crt": crt,
-            "fvg": None,
-            "ob": None,
-            "ob_first_tap": False
+            "liquidity":
+                liquidity,
+
+            "crt":
+                crt,
+
+            "fvg":
+                None,
+
+            "ob":
+                None,
+
+            "ob_first_tap":
+                False
         }
 
-    fvg = setup["fvg"]
-    ob = setup["ob"]
+    fvg = setup[
+        "fvg"
+    ]
+
+    ob = setup[
+        "ob"
+    ]
 
     if not is_fresh(
         fvg.get(
@@ -1355,11 +1142,20 @@ def build_ranking_snapshot(
     ):
 
         return {
-            "liquidity": liquidity,
-            "crt": crt,
-            "fvg": None,
-            "ob": None,
-            "ob_first_tap": False
+            "liquidity":
+                liquidity,
+
+            "crt":
+                crt,
+
+            "fvg":
+                None,
+
+            "ob":
+                None,
+
+            "ob_first_tap":
+                False
         }
 
     first_tap = (
@@ -1370,116 +1166,83 @@ def build_ranking_snapshot(
     )
 
     return {
-        "liquidity": liquidity,
-        "crt": crt,
-        "fvg": fvg,
-        "ob": ob,
-        "ob_first_tap": first_tap
+        "liquidity":
+            liquidity,
+
+        "crt":
+            crt,
+
+        "fvg":
+            fvg,
+
+        "ob":
+            ob,
+
+        "ob_first_tap":
+            first_tap
     }
 
 
 # ==========================================
-# MARKET RANKING
-# ==========================================
-
-def send_market_ranking(
-    snapshots
-):
-
-    missing = [
-        symbol
-        for symbol in SYMBOLS
-        if symbol not in snapshots
-    ]
-
-    if missing:
-
-        print(
-            "⚠️ Ranking skipped. "
-            "Missing H1 data: "
-            + ", ".join(missing)
-        )
-
-        return
-
-    rankings = rank_instruments(
-        snapshots
-    )
-
-    ranking_cycle = (
-        datetime.now(
-            UTC
-        )
-        .replace(
-            minute=0,
-            second=0,
-            microsecond=0
-        )
-        .isoformat()
-    )
-
-    def ranking_sender(
-        message
-    ):
-
-        sent = send_message(
-            message,
-            "Market Ranking"
-        )
-
-        if not sent:
-
-            raise Exception(
-                "Ranking Telegram "
-                "send failed"
-            )
-
-    result = (
-        process_ranking_alert(
-            rankings=rankings,
-            candle_time=ranking_cycle,
-            send_function=ranking_sender
-        )
-    )
-
-    print(
-        "🏆 Ranking result: "
-        f"{result.get('reason')}"
-    )
-
-
-# ==========================================
-# MAIN ENGINE
+# CLEAN MODE MAIN ENGINE
 # ==========================================
 
 def run_engine():
 
     print(
-        "\n" + "=" * 60
+        "\n"
+        + "=" * 60
     )
 
     print(
-        "🚀 ICT LIVE ALERT ENGINE"
+        "🧹 ICT LIVE ALERT ENGINE "
+        "- CLEAN MODE"
     )
 
     print(
         "=" * 60
     )
 
-    session_events = (
-        check_session_open_close()
+    print(
+        "✅ CRT: H1 + H4"
     )
 
-    ranking_snapshots = {}
+    print(
+        "✅ H4 OB Tap / Inside Zone"
+    )
 
-    h1_market_data = {}
+    print(
+        "✅ High Confluence: H1 + Chart"
+    )
+
+    print(
+        "🚫 Standalone Liquidity OFF"
+    )
+
+    print(
+        "🚫 Standalone FVG OFF"
+    )
+
+    print(
+        "🚫 OB + FVG message OFF"
+    )
+
+    print(
+        "🚫 Session messages OFF"
+    )
+
+    print(
+        "🚫 Ranking messages OFF"
+    )
 
     for symbol in SYMBOLS:
 
-        for timeframe in TIMEFRAMES:
+        for timeframe in LIVE_TIMEFRAMES:
 
             print(
-                "\n" + "-" * 60
+                "\n"
+                + "-"
+                * 60
             )
 
             print(
@@ -1489,7 +1252,8 @@ def run_engine():
             )
 
             print(
-                "-" * 60
+                "-"
+                * 60
             )
 
             try:
@@ -1515,29 +1279,9 @@ def run_engine():
                     f"candles received"
                 )
 
-                if timeframe == "H1":
-
-                    h1_market_data[
-                        symbol
-                    ] = df
-
-                check_liquidity(
-                    symbol,
-                    timeframe,
-                    df
-                )
-
-                check_daily_liquidity(
-                    symbol,
-                    timeframe,
-                    df
-                )
-
-                check_session_liquidity(
-                    symbol,
-                    timeframe,
-                    df
-                )
+                # --------------------------
+                # 1. CRT H1 / H4
+                # --------------------------
 
                 check_crt(
                     symbol,
@@ -1545,100 +1289,55 @@ def run_engine():
                     df
                 )
 
-                check_fvg(
-                    symbol,
-                    timeframe,
-                    df
-                )
-
-                check_ob_fvg(
-                    symbol,
-                    timeframe,
-                    df
-                )
-
-                # High Confluence first,
-                # before OB tap is confirmed.
-                check_high_confluence(
-                    symbol,
-                    timeframe,
-                    df
-                )
+                # --------------------------
+                # 2. HIGH CONFLUENCE H1
+                # --------------------------
 
                 if timeframe == "H1":
 
-                    ranking_snapshots[
-                        symbol
-                    ] = (
-                        build_ranking_snapshot(
-                            df
-                        )
+                    check_high_confluence(
+                        symbol,
+                        timeframe,
+                        df
                     )
 
-                check_ob_first_tap(
-                    symbol,
-                    timeframe,
-                    df
-                )
+                # --------------------------
+                # 3. H4 OB TAP / ZONE
+                # --------------------------
+
+                if timeframe == "H4":
+
+                    check_h4_ob_zone(
+                        symbol,
+                        timeframe,
+                        df
+                    )
 
             except Exception as e:
 
                 print(
                     f"⚠️ Error | "
                     f"{symbol} | "
-                    f"{timeframe}: {e}"
+                    f"{timeframe}: "
+                    f"{e}"
                 )
 
-            time.sleep(3)
+            time.sleep(
+                3
+            )
 
     print(
-        "\n" + "=" * 60
+        "\n"
+        + "=" * 60
     )
 
     print(
-        "📊 CHECKING SESSION SUMMARIES"
-    )
-
-    print(
-        "=" * 60
-    )
-
-    try:
-
-        check_session_summaries(
-            session_events,
-            h1_market_data
-        )
-
-    except Exception as e:
-
-        print(
-            f"⚠️ Session summary error: {e}"
-        )
-
-    print(
-        "\n" + "=" * 60
-    )
-
-    print(
-        "🏆 CHECKING MARKET RANKING"
+        "✅ CLEAN MODE CYCLE COMPLETE"
     )
 
     print(
         "=" * 60
     )
-
-    try:
-
-        send_market_ranking(
-            ranking_snapshots
-        )
-
-    except Exception as e:
-
-        print(
-            f"⚠️ Ranking error: {e}"
-        )
 
 
 if __name__ == "__main__":
